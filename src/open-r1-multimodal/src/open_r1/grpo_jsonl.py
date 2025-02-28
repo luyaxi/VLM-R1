@@ -18,6 +18,7 @@ import pathlib
 from datetime import datetime
 from dataclasses import dataclass, field
 from typing import Optional
+from babel.numbers import parse_decimal
 
 from datasets import load_dataset, load_from_disk
 from transformers import Qwen2VLForConditionalGeneration
@@ -116,9 +117,9 @@ class GRPOScriptArguments(ScriptArguments):
         },
     )
     reward_method: Optional[str] = field(
-        default="default",
+        default=None,
         metadata={
-            "help": "Choose reward method: 'default', 'ratio', 'choice', ..."
+            "help": "Choose reward method: 'default', 'mcp', ..."
         },
     )
 
@@ -186,6 +187,54 @@ def mcq_reward(content, sol, **kwargs):
     return reward
 
 
+def yes_no_reward(content, sol, **kwargs):
+    content = content.lower()
+    sol = sol.lower()
+
+    # Extract answer from solution if it has think/answer tags
+    sol_match = re.search(r'<answer>(.*?)</answer>', sol)
+    ground_truth = sol_match.group(1).strip() if sol_match else sol.strip()
+
+    # Extract answer from content if it has think/answer tags
+    content_match = re.search(r'<answer>(.*?)</answer>', content, re.DOTALL)
+    student_answer = content_match.group(1).strip() if content_match else content.strip()
+
+    ground_yes_no = re.search(r'(yes|no)', ground_truth)
+    ground_yes_no = ground_yes_no.group(1) if ground_yes_no else ''
+    student_yes_no = re.search(r'(yes|no)', student_answer)
+    student_yes_no = student_yes_no.group(1) if student_yes_no else ''
+
+    reward = 1.0 if ground_yes_no == student_yes_no else 0.0
+
+    return reward
+
+def numeric_reward(content, sol, **kwargs):
+    content = clean_text(content)
+    sol = clean_text(sol)
+    try:
+        content, sol = float(content), float(sol)
+        return 1.0 if content == sol else 0.0
+    except:
+        return None
+
+def clean_text(text, exclue_chars=['\n', '\r']):
+    # Extract content between <answer> and </answer> if present
+    answer_match = re.search(r'<answer>(.*?)</answer>', text, re.DOTALL)
+    if answer_match:
+        text = answer_match.group(1)
+    
+    for char in exclue_chars:
+        if char in ['\n', '\r']:
+            # If there is a space before the newline, remove the newline
+            text = re.sub(r'(?<=\s)' + re.escape(char), '', text)
+            # If there is no space before the newline, replace it with a space
+            text = re.sub(r'(?<!\s)' + re.escape(char), ' ', text)
+        else:
+            text = text.replace(char, ' ')
+    
+    # Remove leading and trailing spaces and convert to lowercase
+    return text.strip().rstrip('.').lower()
+
 def default_accuracy_reward(content, sol, **kwargs):
     reward = 0.0
     # Try symbolic verification first for numeric answers
@@ -214,7 +263,9 @@ def default_accuracy_reward(content, sol, **kwargs):
             
             if has_numbers:
                 # For numeric answers, use exact matching
-                reward = 1.0 if student_answer == ground_truth else 0.0
+                reward = numeric_reward(student_answer, ground_truth)
+                if reward is None:
+                    reward = ratio(clean_text(student_answer), clean_text(ground_truth))
             elif has_choices:
                 # For multiple choice, extract and compare choices
                 correct_choice = has_choices.upper()
@@ -223,7 +274,7 @@ def default_accuracy_reward(content, sol, **kwargs):
                     reward = 1.0 if student_choice == correct_choice else 0.0
             else:
                 # For text answers, use fuzzy matching
-                reward = ratio(student_answer.lower(), ground_truth.rstrip(".").lower())
+                reward = ratio(clean_text(student_answer), clean_text(ground_truth))
         except Exception:
             pass  # Keep reward as 0.0 if all methods fail
 
@@ -237,6 +288,8 @@ def accuracy_reward(completions, solution, **kwargs):
         # if accu_reward_method is defined, use the corresponding reward function, otherwise use the default reward function
         if accu_reward_method == "mcq":
             reward = mcq_reward(content, sol)
+        elif accu_reward_method == 'yes_no':
+            reward = yes_no_reward(content, sol)
         else:
             reward = default_accuracy_reward(content, sol)  
         rewards.append(reward)
@@ -300,7 +353,16 @@ def main(script_args, training_args, model_args):
     
     data_files = script_args.data_file_paths.split(":")
     image_folders = script_args.image_folders.split(":")
-    accu_reward_methods = script_args.reward_method.split(":")
+    
+    if len(data_files) != len(image_folders):
+        raise ValueError("Number of data files must match number of image folders")
+    
+    if script_args.reward_method is None:
+        accu_reward_methods = ["default"] * len(data_files)
+    else:
+        accu_reward_methods = script_args.reward_method.split(":")
+        assert len(accu_reward_methods) == len(data_files), f"Number of reward methods must match number of data files: {len(accu_reward_methods)} != {len(data_files)}"
+
     
     if len(data_files) != len(image_folders):
         raise ValueError("Number of data files must match number of image folders")
