@@ -1,10 +1,12 @@
 import re
 import json
 import json5
+import random
 import jsonschema
 from tqdm import tqdm
 from torch.utils.data import Dataset
 from PIL import Image
+import os
 
 SCHEMA = {
     "type": "object",
@@ -113,20 +115,32 @@ def action_match_reward(completions, solution: list[dict], resolution: list[tupl
             action = json5.loads(action_str)
             jsonschema.validate(action, SCHEMA)
         except jsonschema.ValidationError as e:
-            scores.append(0.0)
+            print("Invalid Action Format: ", action)
+            scores.append(0.01)
             continue
         except Exception as e:
+            print("Error while loading action: ", action_str)
             scores.append(0.0)
             continue
         
         # check if the action is same
+        score = 0.05
         
         # type check
+        extra_key = set(action.keys()) - set(sol.keys())
+        if extra_key:
+            score = 0.05
+            scores.append(score)
+            continue
+
+        for k in sol.keys():
+            if k in action:
+                score += 0.05            
+        
         for k in sol.keys():
             if k not in action:
-                score = 0.0
-                break
-        
+                continue
+            sub_score = 0.0
             # type check passed, now check args
             match k:
                 case "POINT":
@@ -135,56 +149,58 @@ def action_match_reward(completions, solution: list[dict], resolution: list[tupl
                     gt_x, gt_y = sol[k]
                     h,w = img_res
                     
-                    if abs(gt_x - x) / h < 0.05:
-                        if abs(gt_y - y) / w < 0.05:
-                            score = 1.0
-                        else:
-                            score = 0.0
-                    else:
-                        score = 0.0
-                    
+                    # calculate the score according to the L1 distance
+                    l1_dist = abs(gt_x - x) + abs(gt_y - y)
+                    max_l1_dist = 1000+1000
+                    sub_score = 1 - l1_dist / max_l1_dist
                     
 
                 case "duration":
-                    if action[k] < 150 or action[k] > 5000:
-                        score = 0.0
+                    if action[k] > 150 or action[k] < 5000:
+                        sub_score = 1.0
                 
                 case "TYPE":
-                    if sol[k] not in action[k]:
-                        score = 0.0
+                    if sol[k] in action[k]:
+                        sub_score = 1.0
                 
                 case "to":
                     if isinstance(action[k], list):
                         if not isinstance(sol[k],list):
-                            score = 0.0
+                            sub_score = 0.0
                             break
                         # calculate the distance between the two points
                         x,y = action[k]
                         gt_x, gt_y = sol[k]
                         h,w = img_res
                         
-                        if abs(gt_x - x) / h < 0.05:
-                            if abs(gt_y - y) / w < 0.05:
-                                score = 1.0
-                            else:
-                                score = 0.0
-                        else:
-                            score = 0.0
+                        # calculate the score according to the L1 distance
+                        l1_dist = abs(gt_x - x) + abs(gt_y - y)
+                        max_l1_dist = 1000+1000
+                        sub_score = 1 - l1_dist / max_l1_dist
+                        
+                        # if abs(gt_x - x) / h < 0.05:
+                        #     if abs(gt_y - y) / w < 0.05:
+                        #         sub_score = 1.0
+                        #     else:
+                        #         sub_score = 0.0
+                        # else:
+                        #     sub_score = 0.0
                     else:
                         if isinstance(sol[k],list):
-                            score = 0.0
+                            sub_score = 0.0
                         else:
                             try:
                                 if action[k] != sol[k]:
-                                    score = 0.0
+                                    sub_score = 0.0
                             except:
-                                score = 0.0
+                                sub_score = 0.0
 
                 
                 case _:
                     if action[k] != sol[k]:
-                        score = 0.0
-                        
+                        sub_score = 0.0
+            
+            score += (1 - score) / len(sol) * sub_score
         scores.append(score)
 
     return scores
@@ -200,22 +216,26 @@ SYSTEM_PROMPT = f"""# Role
 针对用户意图，根据输入的当前屏幕截图、屏幕元素描述，输出下一步的操作。
 
 # Rule
-- 以紧凑JSON格式输出操作
+- 以紧凑JSON格式输出__一个__操作
 - 输出操作必须遵循Schema约束
+- 以行注释（//）的形式描述你的思考过程
 
 # Schema
-{compact_json_dumps(SCHEMA)}
-
+""" + compact_json_dumps(SCHEMA) + \
+"""
 # Example Output
-```
-// I should click ...
-{compact_json_dumps({"POINT":[123,456]})}
-```"""
+
+{
+// 我应该...
+"POINT":[100,200]
+}"""
 
 
 class GUIRFTDataset(Dataset):
-    def __init__(self, jsonl_file_path: str, ):
+    def __init__(self, jsonl_file_path: str, *args, **kwargs):
+        super().__init__()
         self.data = []
+        self.jsonl_file_path = jsonl_file_path
         with open(jsonl_file_path, "r") as f:
             for line in tqdm(f.readlines(), desc="Loading dataset",dynamic_ncols=True):
                 try:
@@ -223,6 +243,7 @@ class GUIRFTDataset(Dataset):
                 except:
                     print("Error while loading line.")
                     continue
+        self.image_root = os.path.dirname(os.path.dirname(jsonl_file_path))
 
     def __len__(self):
         return len(self.data)
@@ -230,8 +251,14 @@ class GUIRFTDataset(Dataset):
     def __getitem__(self, index):
         item = self.data[index]
         
-        for img_id,img_file in item["images"].items():
-            img = Image.open(img_file).convert("RGB")
+        for img_id,img_file in item["image"].items():
+            try:
+                img = Image.open(os.path.join(self.image_root,img_file.replace("/home/test/test03/lyx/check_gui_data-filter_similar/",""))).convert("RGB")
+            except:
+                print("Error while loading image: ", img_file)
+                return self[random.randint(0,len(self.data)-1)]
+            h,w = img.size
+            img = img.resize((w//3,h//3),resample=Image.Resampling.BILINEAR)
             break
         
         
@@ -242,26 +269,27 @@ class GUIRFTDataset(Dataset):
         conv = []
         conv.append({"role":"system","content":SYSTEM_PROMPT})
         conv.append({"role":"user","content":[
-            {"type":"image"},
-            {"type":"text","text": user_query}
+            img,
+            user_query
         ]})
         
         return {
             "image":img,
+            "resolution": img.size,
             "solution": action,
             "prompt": conv
         }
 
 
 
-if __name__=="__main__":
-    print(action_match_reward(
-        [
-            ({"content": "// hello\n{\n  \"POINT\": [100, 200],\n  \"duration\": 200\n}"},0),
-        ], 
-        [{
-            "POINT": [100, 200],
-            "duration": 200
-        }], 
-        [(1000, 2000)],
-    ))
+# if __name__=="__main__":
+    # print(action_match_reward(
+    #     [
+    #         ({"content": "// hello\n{\n  \"POINT\": [100, 200],\n  \"duration\": 200\n}"},0),
+    #     ], 
+    #     [{
+    #         "POINT": [100, 200],
+    #         "duration": 200
+    #     }], 
+    #     [(1000, 2000)],
+    # ))

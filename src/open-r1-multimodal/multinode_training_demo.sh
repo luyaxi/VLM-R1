@@ -4,17 +4,17 @@ RUN_NAME=multinode_training # assume there is a ${RUN_NAME}_args.yaml file in th
 
 declare -A node2ip_map
 node2ip_map=(
-    ["node1"]="192.168.1.101"
-    ["node2"]="192.168.1.102"
-    ["node3"]="192.168.1.103"
-    ["node4"]="192.168.1.104"
+    ["node1"]="10.0.1.7"
+    ["node2"]="10.0.1.8"
+    ["node3"]="10.0.1.9"
+    ["node4"]="10.0.1.10"
 )
 
 # Default nodes if no arguments provided
-DEFAULT_NODES=("node1" "node2")
+DEFAULT_NODES=("node1" "node2" "node3" "node4")
 
 # Local codebase path in file system
-LOCAL_CODEBASE_PATH="/path/to/your/codebase"
+LOCAL_CODEBASE_PATH="/data3/workhome/luyaxi/VCPM-R1/src/open-r1-multimodal"
 
 # Use provided nodes or default nodes
 if [ "$#" -ge 1 ]; then
@@ -41,7 +41,7 @@ MASTER_IP="${node2ip_map[$MASTER_NODE]}"
 echo "Master node IP: $MASTER_IP"
 
 # Create log directory for each node
-LOG_DIR="path/to/your/log/dir"
+LOG_DIR="/data3/workhome/luyaxi/VCPM-R1/src/open-r1-multimodal/logs"
 mkdir -p $LOG_DIR
 
 # Generate docker-compose.yml

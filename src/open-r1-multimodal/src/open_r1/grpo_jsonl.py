@@ -24,7 +24,7 @@ from datasets import load_dataset, load_from_disk
 from transformers import Qwen2VLForConditionalGeneration
 
 from math_verify import parse, verify
-from open_r1.trainer import Qwen2VLGRPOTrainer, GRPOConfig
+from open_r1.trainer import MiniCPMVGRPOTrainer, GRPOConfig
 from trl import ModelConfig, ScriptArguments, TrlParser, get_peft_config
 import PIL
 from Levenshtein import ratio
@@ -413,7 +413,7 @@ def main(script_args, training_args, model_args):
 
     # Select trainer class based on vlm_trainer argument
 
-    trainer_cls = Qwen2VLGRPOTrainer
+    trainer_cls = MiniCPMVGRPOTrainer
     print("using trainer:", trainer_cls.__name__)
 
     # Initialize the GRPO trainer

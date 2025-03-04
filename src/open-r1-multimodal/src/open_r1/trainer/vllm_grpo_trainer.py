@@ -35,8 +35,8 @@ from transformers import (
     GenerationConfig,
     PreTrainedModel,
     PreTrainedTokenizerBase,
-    Qwen2VLForConditionalGeneration,
-    Qwen2_5_VLForConditionalGeneration,
+    # Qwen2VLForConditionalGeneration,
+    # Qwen2_5_VLForConditionalGeneration,
     Trainer,
     TrainerCallback,
     is_wandb_available,
@@ -173,10 +173,12 @@ class Qwen2VLGRPOVLLMTrainer(Trainer):
                 else model_init_kwargs.get("use_cache")
             )
             if "Qwen2-VL" in model_id:
+                from transformers import Qwen2VLForConditionalGeneration
                 model = Qwen2VLForConditionalGeneration.from_pretrained(
                     model, **model_init_kwargs
                 )
             elif "Qwen2.5-VL" in model_id:
+                from transformers import Qwen2_5_VLForConditionalGeneration
                 model = Qwen2_5_VLForConditionalGeneration.from_pretrained(model, **model_init_kwargs)
             elif "Aria" in model_id:
                 model_init_kwargs.pop("use_cache")
@@ -199,6 +201,7 @@ class Qwen2VLGRPOVLLMTrainer(Trainer):
         # Reference model
         if is_deepspeed_zero3_enabled():
             if "Qwen2-VL" in model_id:
+                from transformers import Qwen2VLForConditionalGeneration
                 self.ref_model = Qwen2VLForConditionalGeneration.from_pretrained(
                     model_id, **model_init_kwargs
                 )
