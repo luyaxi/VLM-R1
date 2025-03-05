@@ -258,7 +258,7 @@ class GUIRFTDataset(Dataset):
                 print("Error while loading image: ", img_file)
                 return self[random.randint(0,len(self.data)-1)]
             h,w = img.size
-            img = img.resize((w//3,h//3),resample=Image.Resampling.BILINEAR)
+            img = img.resize((w//2,h//2),resample=Image.Resampling.BILINEAR)
             break
         
         

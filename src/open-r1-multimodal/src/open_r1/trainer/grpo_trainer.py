@@ -277,7 +277,7 @@ class MiniCPMVGRPOTrainer(Trainer):
 
         # Processing class
         if processing_class is None:
-            if "Qwen2-VL" in model_id or "Qwen2.5-VL" in model_id or "Aria" in model_id or "MiniCPM" in model_id:
+            if "Qwen2-VL" in model_id or "Qwen2.5-VL" in model_id or "Aria" in model_id or "cpm" in model_id.lower():
                 processing_class = AutoProcessor.from_pretrained(model_id,trust_remote_code=True)
                 pad_token_id = processing_class.tokenizer.pad_token_id
                 processing_class.pad_token_id = pad_token_id

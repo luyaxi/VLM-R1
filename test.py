@@ -11,13 +11,6 @@ processor = AutoProcessor.from_pretrained(model_path,trust_remote_code=True)
 
 
 
-conv = [{
-    "role":"user",
-    "content": [
-        "fix the code in the given pic.",
-        Image.open("test.png")
-    ]
-}]
 
 inputs = processor(
     processor.tokenizer.apply_chat_template([
@@ -35,6 +28,13 @@ output = model.llm(**inputs)
 
 
 
+conv = [{
+    "role":"user",
+    "content": [
+        "fix the code in the given pic.",
+        Image.open("test.png")
+    ]
+}]
 
-# res = model.chat(None,conv,tokenizer=tokenizer)
-# print(res)
+res = model.chat(None,conv,tokenizer=tokenizer)
+print(res)
