@@ -141,6 +141,7 @@ def action_match_reward(completions, solution: list[dict], resolution: list[tupl
         sub_scores = []
         for k in sol.keys():
             if k not in action:
+                sub_scores.append(0.0)
                 continue
             sub_score = 0.0
             # type check passed, now check args

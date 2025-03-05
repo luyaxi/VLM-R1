@@ -23,8 +23,8 @@ torchrun --nproc_per_node="8" \
     --image_root  /data3/workhome/luyaxi/VCPM-R1/GUIData/new_mb_data \
     --max_prompt_length 2048 \
     --num_generations 4 \
-    --per_device_train_batch_size 1 \
-    --gradient_accumulation_steps 4 \
+    --per_device_train_batch_size 2 \
+    --gradient_accumulation_steps 2 \
     --logging_steps 1 \
     --bf16 \
     --torch_dtype bfloat16 \
