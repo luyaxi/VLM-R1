@@ -16,9 +16,9 @@ torchrun --nproc_per_node="8" \
     --master_addr="127.0.0.1" \
     --master_port="12346" \
     src/open_r1/grpo_rec.py \
-    --deepspeed local_scripts/ds_zero3.json \
+    --deepspeed local_scripts/zero2.json \
     --output_dir output/$RUN_NAME \
-    --model_name_or_path  /data3/workhome/luyaxi/VCPM-R1/models/MiniCPM3-V-1_6B \
+    --model_name_or_path  /data3/workhome/luyaxi/VCPM-R1/models/MiniCPM3-V-1_6B-hg \
     --dataset_name /data3/workhome/luyaxi/VCPM-R1/GUIData/new_mb_data/tasks.jsonl \
     --image_root  /data3/workhome/luyaxi/VCPM-R1/GUIData/new_mb_data \
     --max_prompt_length 2048 \

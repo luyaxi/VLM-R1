@@ -7,6 +7,7 @@ from tqdm import tqdm
 from torch.utils.data import Dataset
 from PIL import Image
 import os
+import difflib
 
 SCHEMA = {
     "type": "object",
@@ -116,7 +117,7 @@ def action_match_reward(completions, solution: list[dict], resolution: list[tupl
             jsonschema.validate(action, SCHEMA)
         except jsonschema.ValidationError as e:
             print("Invalid Action Format: ", action)
-            scores.append(0.01)
+            scores.append(0.05)
             continue
         except Exception as e:
             print("Error while loading action: ", action_str)
@@ -124,19 +125,20 @@ def action_match_reward(completions, solution: list[dict], resolution: list[tupl
             continue
         
         # check if the action is same
-        score = 0.05
+        score = 0.1
         
         # type check
         extra_key = set(action.keys()) - set(sol.keys())
         if extra_key:
-            score = 0.05
+            score = 0.1
             scores.append(score)
             continue
 
         for k in sol.keys():
             if k in action:
-                score += 0.05            
+                score += 0.05
         
+        sub_scores = []
         for k in sol.keys():
             if k not in action:
                 continue
@@ -158,10 +160,12 @@ def action_match_reward(completions, solution: list[dict], resolution: list[tupl
                 case "duration":
                     if action[k] > 150 or action[k] < 5000:
                         sub_score = 1.0
+                    else:
+                        sub_score = 0.0
                 
                 case "TYPE":
-                    if sol[k] in action[k]:
-                        sub_score = 1.0
+                    similarity = difflib.SequenceMatcher(None, action[k], sol[k]).ratio()
+                    sub_score = similarity
                 
                 case "to":
                     if isinstance(action[k], list):
@@ -178,13 +182,6 @@ def action_match_reward(completions, solution: list[dict], resolution: list[tupl
                         max_l1_dist = 1000+1000
                         sub_score = 1 - l1_dist / max_l1_dist
                         
-                        # if abs(gt_x - x) / h < 0.05:
-                        #     if abs(gt_y - y) / w < 0.05:
-                        #         sub_score = 1.0
-                        #     else:
-                        #         sub_score = 0.0
-                        # else:
-                        #     sub_score = 0.0
                     else:
                         if isinstance(sol[k],list):
                             sub_score = 0.0
@@ -192,6 +189,8 @@ def action_match_reward(completions, solution: list[dict], resolution: list[tupl
                             try:
                                 if action[k] != sol[k]:
                                     sub_score = 0.0
+                                else:
+                                    sub_score = 1.0
                             except:
                                 sub_score = 0.0
 
@@ -199,8 +198,15 @@ def action_match_reward(completions, solution: list[dict], resolution: list[tupl
                 case _:
                     if action[k] != sol[k]:
                         sub_score = 0.0
+                    else:
+                        sub_score = 1.0
             
-            score += (1 - score) / len(sol) * sub_score
+            sub_scores.append(sub_score)
+            
+        subscore_max = (1 - score) / len(sub_scores)
+        for sub_score in sub_scores:
+            score += sub_score * subscore_max
+            
         scores.append(score)
 
     return scores
