@@ -162,10 +162,8 @@ def action_args_check(completions, solution: list[dict], **kwargs):
             sub_score = 0.0
             match k:
                 case "POINT":
-                    if action[k] == sol[k]:
-                        sub_score = 1.0
-                    else:
-                        sub_score = 0.0
+                    continue
+                
                 case "duration":
                     if action[k] > 150 or action[k] < 5000:
                         sub_score = 1.0
@@ -177,16 +175,10 @@ def action_args_check(completions, solution: list[dict], **kwargs):
                     sub_score = similarity
                     
                 case "to":
-                    if isinstance(action[k], list):
-                        if not isinstance(sol[k],list):
-                            sub_score = 0.0
-                        else:
-                            if action[k] == sol[k]:
-                                sub_score = 1.0
-                            else:
-                                sub_score = 0.0
+                    if isinstance(sol[k], list):
+                        continue
                     else:
-                        if isinstance(sol[k],list):
+                        if isinstance(action[k],list):
                             sub_score = 0.0
                         else:
                             if action[k] == sol[k]:
@@ -195,13 +187,19 @@ def action_args_check(completions, solution: list[dict], **kwargs):
                                 sub_score = 0.0
                 
                 case _:
-                    if action[k] == sol[k]:
-                        sub_score = 1.0
+                    if sol[k] is None:
+                        if action[k] is None:
+                            sub_score = 1.0
+                        else:
+                            sub_score = 0.0
                     else:
-                        sub_score = 0.0
+                        if action[k] == sol[k]:
+                            sub_score = 1.0
+                        else:
+                            sub_score = 0.0
             sub_scores.append(sub_score)
-        score = sum(sub_scores) / len(sub_scores)
-        scores.append(score)
+
+        scores.append(sum(sub_scores) / len(sub_scores))
 
     return scores
 
@@ -256,8 +254,8 @@ def point_distance_check(completions, solution: list[dict], **kwargs):
             if "to" not in action:
                 to_score = 0.0
             else:
-                if isinstance(action["to"], list):
-                    if not isinstance(sol["to"],list):
+                if isinstance(sol, list):
+                    if not isinstance(action["to"],list):
                         to_score = 0.0
                     else:
                         to_score = calculate_dist_score(*action["to"], *sol["to"])
