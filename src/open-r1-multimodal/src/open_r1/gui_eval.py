@@ -96,7 +96,185 @@ SCHEMA = {
     }
 }
 
+def load_and_validate_action(res:str,):
+    action_str = re.search(r'```json(.*?)```', res, re.DOTALL)
+    if action_str:
+        action_str = action_str.group(1).strip()
+    else:
+        action_str = res
+    
+    action = json5.loads(action_str)
+    jsonschema.validate(action, SCHEMA)
+    return action
 
+def action_schema_check(completions, **kwargs):
+    contents = [completion[0]["content"] for completion in completions]
+    scores = []
+    for res in contents:
+        res:str = res.strip()
+        # then load and validate the action
+        try:
+            action:dict = load_and_validate_action(res)
+            scores.append(1.0)
+        except jsonschema.ValidationError as e:
+            print("Invalid Action Format: ", res)
+            scores.append(0.5)
+        except Exception as e:
+            print("Error while loading action: ", res)
+            scores.append(0.0)
+
+    return scores
+
+def action_type_check(completions, solution: list[dict], **kwargs):
+    contents = [completion[0]["content"] for completion in completions]
+    scores = []
+    for res, sol in zip(contents, solution):
+        res:str = res.strip()
+        # then load and validate the action
+        try:
+            action: dict = load_and_validate_action(res)
+            if set(action.keys()) != set(sol.keys()):
+                scores.append(0.0)
+            else:
+                scores.append(1.0)
+        except Exception as e:
+            scores.append(0.0)
+
+    return scores
+
+def action_args_check(completions, solution: list[dict], **kwargs):
+    contents = [completion[0]["content"] for completion in completions]
+    scores = []
+    for res, sol in zip(contents, solution):
+        res:str = res.strip()
+        # then load and validate the action
+        try:
+            action: dict = load_and_validate_action(res)
+        except Exception as e:
+            scores.append(0.0)
+            continue
+        
+        sub_scores = []
+        for k in sol.keys():
+            if k not in action:
+                sub_scores.append(0.0)
+                continue
+            sub_score = 0.0
+            match k:
+                case "POINT":
+                    if action[k] == sol[k]:
+                        sub_score = 1.0
+                    else:
+                        sub_score = 0.0
+                case "duration":
+                    if action[k] > 150 or action[k] < 5000:
+                        sub_score = 1.0
+                    else:
+                        sub_score = 0.0
+                
+                case "TYPE":
+                    similarity = difflib.SequenceMatcher(None, action[k], sol[k]).ratio()
+                    sub_score = similarity
+                    
+                case "to":
+                    if isinstance(action[k], list):
+                        if not isinstance(sol[k],list):
+                            sub_score = 0.0
+                        else:
+                            if action[k] == sol[k]:
+                                sub_score = 1.0
+                            else:
+                                sub_score = 0.0
+                    else:
+                        if isinstance(sol[k],list):
+                            sub_score = 0.0
+                        else:
+                            if action[k] == sol[k]:
+                                sub_score = 1.0
+                            else:
+                                sub_score = 0.0
+                
+                case _:
+                    if action[k] == sol[k]:
+                        sub_score = 1.0
+                    else:
+                        sub_score = 0.0
+            sub_scores.append(sub_score)
+        score = sum(sub_scores) / len(sub_scores)
+        scores.append(score)
+
+    return scores
+
+def point_distance_check(completions, solution: list[dict], **kwargs):
+    contents = [completion[0]["content"] for completion in completions]
+    scores = []
+    
+    def calculate_dist_score(x,y,gt_x,gt_y):
+        dist_score = 0.0
+        delta_x = abs(gt_x - x)
+        delta_y = abs(gt_y - y)
+        dist_score = 1 - (max(delta_x,delta_y) / 1000)
+        # if delta_x < 500 and delta_y < 500:
+        #     dist_score += 0.1
+        
+        # if delta_x < 400 and delta_y < 400:
+        #     dist_score += 0.1
+        
+        # if delta_x < 300 and delta_y < 300:
+        #     dist_score += 0.1
+        
+        # if delta_x < 200 and delta_y < 200:
+        #     dist_score += 0.2
+        
+        # if delta_x < 100 and delta_y < 100:
+        #     dist_score += 0.3
+        
+        # if delta_x < 50 and delta_y < 50:
+        #     dist_score = 1 - (delta_x + delta_y) / 1000
+        
+        return dist_score
+    
+    for res, sol in zip(contents, solution):
+        res:str = res.strip()
+
+        # then load and validate the action
+        try:
+            action: dict = load_and_validate_action(res)
+        except Exception as e:
+            scores.append(0.0)
+            continue
+        
+        point_score = None
+        if "POINT" in sol:
+            if "POINT" not in action:
+                point_score = 0.0
+            else:
+                point_score = calculate_dist_score(*action["POINT"], *sol["POINT"])
+        
+        to_score = None
+        if "to" in sol:
+            if "to" not in action:
+                to_score = 0.0
+            else:
+                if isinstance(action["to"], list):
+                    if not isinstance(sol["to"],list):
+                        to_score = 0.0
+                    else:
+                        to_score = calculate_dist_score(*action["to"], *sol["to"])
+                else:
+                    to_score = None
+        
+        if point_score is not None and to_score is not None:
+            scores.append((point_score + to_score) / 2)
+        elif point_score is not None and to_score is None:
+            scores.append(point_score)
+        elif point_score is None and to_score is not None:
+            scores.append(to_score)
+        else:
+            scores.append(0.0)
+    
+    return scores
+        
 def action_match_reward(completions, solution: list[dict], resolution: list[tuple[int,int]],**kwargs):
     contents = [completion[0]["content"] for completion in completions]
     scores = []
@@ -157,6 +335,8 @@ def action_match_reward(completions, solution: list[dict], resolution: list[tupl
                     max_l1_dist = 1000+1000
                     sub_score = 1 - l1_dist / max_l1_dist
                     
+                    if abs(gt_x - x) > 200 or abs(gt_y - y) > 200:
+                        sub_score = 0.0
 
                 case "duration":
                     if action[k] > 150 or action[k] < 5000:
@@ -183,6 +363,9 @@ def action_match_reward(completions, solution: list[dict], resolution: list[tupl
                         max_l1_dist = 1000+1000
                         sub_score = 1 - l1_dist / max_l1_dist
                         
+                        if abs(gt_x - x) > 200 or abs(gt_y - y) > 200:
+                            sub_score = 0.0
+
                     else:
                         if isinstance(sol[k],list):
                             sub_score = 0.0
