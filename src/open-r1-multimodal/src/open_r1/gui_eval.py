@@ -103,7 +103,7 @@ def load_and_validate_action(res:str,):
     else:
         action_str = res
     
-    action = json5.loads(action_str)
+    action = json5.loads(action_str,allow_duplicate_keys=False)
     jsonschema.validate(action, SCHEMA)
     return action
 
@@ -117,10 +117,10 @@ def action_schema_check(completions, **kwargs):
             action:dict = load_and_validate_action(res)
             scores.append(1.0)
         except jsonschema.ValidationError as e:
-            print("Invalid Action Format: ", res)
+            # print("Invalid Action Format: ", res)
             scores.append(0.5)
         except Exception as e:
-            print("Error while loading action: ", res)
+            # print("Error while loading action: ", res)
             scores.append(0.0)
 
     return scores
@@ -134,6 +134,7 @@ def action_type_check(completions, solution: list[dict], **kwargs):
         try:
             action: dict = load_and_validate_action(res)
             if set(action.keys()) != set(sol.keys()):
+                print("Extra keys in action, Expected: ", sol.keys(), " Got: ", action.keys())
                 scores.append(0.0)
             else:
                 scores.append(1.0)
@@ -157,6 +158,7 @@ def action_args_check(completions, solution: list[dict], **kwargs):
         sub_scores = []
         for k in sol.keys():
             if k not in action:
+                print("Key ", k, " not found in action: ", action)
                 sub_scores.append(0.0)
                 continue
             sub_score = 0.0
@@ -168,11 +170,13 @@ def action_args_check(completions, solution: list[dict], **kwargs):
                     if action[k] > 150 or action[k] < 5000:
                         sub_score = 1.0
                     else:
+                        print("Invalid duration: ", action[k])
                         sub_score = 0.0
                 
                 case "TYPE":
                     similarity = difflib.SequenceMatcher(None, action[k], sol[k]).ratio()
                     sub_score = similarity
+                    print("Text: ",sol[k],", Got: ", action[k],". Similarity: ", similarity)
                     
                 case "to":
                     if isinstance(sol[k], list):
@@ -180,27 +184,35 @@ def action_args_check(completions, solution: list[dict], **kwargs):
                     else:
                         if isinstance(action[k],list):
                             sub_score = 0.0
+                            print(f"Invalid to for direction {sol[k]}: ", action[k])
                         else:
                             if action[k] == sol[k]:
                                 sub_score = 1.0
                             else:
                                 sub_score = 0.0
+                                print("Invalid to: ", action[k])
                 
                 case _:
                     if sol[k] is None:
                         if action[k] is None:
                             sub_score = 1.0
                         else:
+                            print("Required ", k, ", got: ", action[k])
                             sub_score = 0.0
                     else:
                         if action[k] == sol[k]:
                             sub_score = 1.0
                         else:
+                            print("Required ", k, ", got: ", action[k])
                             sub_score = 0.0
+                            
             sub_scores.append(sub_score)
-
-        scores.append(sum(sub_scores) / len(sub_scores))
-
+        if not sub_scores:
+            print("No args to check.")
+            scores.append(0.0)
+        else:
+            scores.append(sum(sub_scores) / len(sub_scores))
+    
     return scores
 
 def point_distance_check(completions, solution: list[dict], **kwargs):
@@ -211,24 +223,12 @@ def point_distance_check(completions, solution: list[dict], **kwargs):
         dist_score = 0.0
         delta_x = abs(gt_x - x)
         delta_y = abs(gt_y - y)
-        dist_score = 1 - (max(delta_x,delta_y) / 1000)
-        # if delta_x < 500 and delta_y < 500:
-        #     dist_score += 0.1
-        
-        # if delta_x < 400 and delta_y < 400:
-        #     dist_score += 0.1
-        
-        # if delta_x < 300 and delta_y < 300:
-        #     dist_score += 0.1
-        
-        # if delta_x < 200 and delta_y < 200:
-        #     dist_score += 0.2
-        
-        # if delta_x < 100 and delta_y < 100:
-        #     dist_score += 0.3
-        
-        # if delta_x < 50 and delta_y < 50:
-        #     dist_score = 1 - (delta_x + delta_y) / 1000
+        max_delta = max(delta_x,delta_y)
+        if max_delta > 300:
+            dist_score = 0.0
+            print("Pixel Distance too large: ", max_delta)
+        else:
+            dist_score = 1 - max_delta / 1000
         
         return dist_score
     
@@ -245,6 +245,7 @@ def point_distance_check(completions, solution: list[dict], **kwargs):
         point_score = None
         if "POINT" in sol:
             if "POINT" not in action:
+                print("Point not found in action: ", action)
                 point_score = 0.0
             else:
                 point_score = calculate_dist_score(*action["POINT"], *sol["POINT"])
@@ -252,10 +253,12 @@ def point_distance_check(completions, solution: list[dict], **kwargs):
         to_score = None
         if "to" in sol:
             if "to" not in action:
+                print("To not found in action: ", action)
                 to_score = 0.0
             else:
-                if isinstance(sol, list):
+                if isinstance(sol["to"], list):
                     if not isinstance(action["to"],list):
+                        print("Must be coordinate to format: ", action)
                         to_score = 0.0
                     else:
                         to_score = calculate_dist_score(*action["to"], *sol["to"])

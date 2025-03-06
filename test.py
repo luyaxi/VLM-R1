@@ -1,3 +1,13 @@
+import json5
+print(json5.loads('''
+{
+    "a": 1,
+    "a": 2
+}
+'''))
+
+exit()
+
 from transformers import AutoModelForCausalLM,AutoProcessor,AutoTokenizer
 from PIL import Image
 

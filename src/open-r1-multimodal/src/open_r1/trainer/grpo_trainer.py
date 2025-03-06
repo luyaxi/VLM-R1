@@ -630,6 +630,10 @@ class MiniCPMVGRPOTrainer(Trainer):
         mean_grouped_rewards = mean_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
         std_grouped_rewards = std_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
         advantages = (rewards - mean_grouped_rewards) / (std_grouped_rewards + 1e-4)
+        
+        # print the completion with the highest reward
+        print("Highest reward completion:")
+        print(completions[rewards.argmax().item()])
 
         # Log the metrics
         completion_length = self.accelerator.gather_for_metrics(completion_mask.sum(1)).float().mean().item()

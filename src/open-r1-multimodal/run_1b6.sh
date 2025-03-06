@@ -5,7 +5,7 @@ cd `dirname $0`
 export DEBUG_MODE="true"
 # export CUDA_VISIBLE_DEVICES=4,5,6,7
 
-RUN_NAME="MiniCPM-V-1B6-GRPO-GUI-FGEVAL"
+RUN_NAME="MiniCPM-V-1B6-GRPO-GUI-FGEVAL-Staged"
 export LOG_PATH="./debug_log_$RUN_NAME.txt"
 export NCCL_P2P_LEVEL=NVL
 
@@ -24,7 +24,7 @@ torchrun --nproc_per_node="8" \
     --max_prompt_length 2048 \
     --num_generations 4 \
     --per_device_train_batch_size 2 \
-    --gradient_accumulation_steps 2 \
+    --gradient_accumulation_steps 8 \
     --logging_steps 1 \
     --bf16 \
     --torch_dtype bfloat16 \
