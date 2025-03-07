@@ -1,26 +1,26 @@
-import json5
-print(json5.loads('''
-{
-    "a": 1,
-    "a": 2
-}
-'''))
+# import json5
+# print(json5.loads('''
+# {
+#     "a": 1,
+#     "a": 2
+# }
+# '''))
 
-exit()
+# exit()
 
 from transformers import AutoModelForCausalLM,AutoProcessor,AutoTokenizer
 from PIL import Image
 
 import torch
 
-model_path = "/data3/workhome/luyaxi/VCPM-R1/models/minicpmv_16_domestic_bs32/checkpoint-1000_2"
+model_path = "/data3/workhome/luyaxi/VCPM-R1/models/MiniCPM-o-2_6-hg"
 
-model = AutoModelForCausalLM.from_pretrained(model_path, trust_remote_code=True,torch_dtype=torch.bfloat16).to("cuda")
+model = AutoModelForCausalLM.from_pretrained(model_path, trust_remote_code=True,torch_dtype=torch.bfloat16, init_audio=False, init_tts=False).to("cuda")
 tokenizer = AutoTokenizer.from_pretrained(model_path,trust_remote_code=True)
 processor = AutoProcessor.from_pretrained(model_path,trust_remote_code=True)
 
 
-model.save_pretrained("/data3/workhome/luyaxi/VCPM-R1/models/MiniCPM3-V-1_6B-SFT1000",save_optimizer=False,)
+# model.save_pretrained("/data3/workhome/luyaxi/VCPM-R1/models/MiniCPM3-V-1_6B-SFT1000",save_optimizer=False,)
 
 
 # inputs = processor(
@@ -39,18 +39,18 @@ model.save_pretrained("/data3/workhome/luyaxi/VCPM-R1/models/MiniCPM3-V-1_6B-SFT
 
 
 
-# conv = [{
-#     "role":"user",
-#     "content": [
-#         "fix the code in the given pic.",
-#         Image.open("test.png")
-#     ]
-# }]
+conv = [{
+    "role":"user",
+    "content": [
+        "fix the code in the given pic.",
+        Image.open("test.png")
+    ]
+}]
 
 # conv = [
 #     {"role": "user", "content":"how are you"},
 # ]
 
-# res = model.chat(None,conv,tokenizer=tokenizer)
+res = model.chat(None,conv,tokenizer=tokenizer)
 
-# print(res)
+print(res)

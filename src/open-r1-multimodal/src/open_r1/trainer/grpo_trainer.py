@@ -246,6 +246,9 @@ class MiniCPMVGRPOTrainer(Trainer):
             )
             if "minicpm" in model_id.lower():
                 model_init_kwargs["trust_remote_code"] = True
+                if "minicpm-o" in model_id.lower():
+                    model_init_kwargs["init_tts"] = False
+                    model_init_kwargs["init_audio"] = False
             model = AutoModelForCausalLM.from_pretrained(model, **model_init_kwargs)
         else:
             model_id = model.config._name_or_path
@@ -485,11 +488,13 @@ class MiniCPMVGRPOTrainer(Trainer):
         prompt_inputs = self.processing_class(
             prompts_lists,
             input_images_lists,
-            max_sclie_nums=9,
-            use_image_id=False,
+            # max_sclie_nums=9,
+            # use_image_id=False,
             return_tensors="pt",
             max_length=self.max_prompt_length
         ).to(device)
+        
+        # print(prompt_inputs)
         
         prompt_inputs.pop('image_sizes')
         # print(prompt_inputs.keys())
@@ -512,6 +517,12 @@ class MiniCPMVGRPOTrainer(Trainer):
                 # return_dict_in_generate=True,
                 # output_logits = True,
             )
+            # print(prompt_ids,self.num_generations,completion_ids)
+            if isinstance(completion_ids, tuple):
+                # print(completion_ids[1].keys())
+                completion_ids = completion_ids[1].sequences
+                # print(completion_ids)
+                # print(completion_ids[0])
             prompt_completion_ids = torch.cat([prompt_ids.repeat_interleave(self.num_generations, dim=0), completion_ids], dim=-1)
             # print(prompt_completion_ids["logits"][0].shape)
             # print(prompt_completion_ids.keys())
@@ -633,7 +644,7 @@ class MiniCPMVGRPOTrainer(Trainer):
         
         # print the completion with the highest reward
         print("Highest reward completion:")
-        print(completions[rewards.argmax().item()])
+        print(completions[rewards.argmax().item()][0]['content'])
 
         # Log the metrics
         completion_length = self.accelerator.gather_for_metrics(completion_mask.sum(1)).float().mean().item()
@@ -675,7 +686,6 @@ class MiniCPMVGRPOTrainer(Trainer):
         else:
             inputs = self._buffered_inputs[self._step % self.args.gradient_accumulation_steps]
         self._step += 1
-
         # # Get the prepared inputs
         # prompt_ids, prompt_mask = inputs["prompt_ids"], inputs["prompt_mask"]
         # completion_ids, completion_mask = inputs["completion_ids"], inputs["completion_mask"]

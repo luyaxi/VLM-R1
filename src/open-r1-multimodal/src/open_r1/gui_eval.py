@@ -134,7 +134,7 @@ def action_type_check(completions, solution: list[dict], **kwargs):
         try:
             action: dict = load_and_validate_action(res)
             if set(action.keys()) != set(sol.keys()):
-                print("Extra keys in action, Expected: ", sol.keys(), " Got: ", action.keys())
+                print("Mismatched keys in action, Expected: ", sol.keys(), " Got: ", action.keys())
                 scores.append(0.0)
             else:
                 scores.append(1.0)
@@ -158,7 +158,6 @@ def action_args_check(completions, solution: list[dict], **kwargs):
         sub_scores = []
         for k in sol.keys():
             if k not in action:
-                print("Key ", k, " not found in action: ", action)
                 sub_scores.append(0.0)
                 continue
             sub_score = 0.0
@@ -245,7 +244,6 @@ def point_distance_check(completions, solution: list[dict], **kwargs):
         point_score = None
         if "POINT" in sol:
             if "POINT" not in action:
-                print("Point not found in action: ", action)
                 point_score = 0.0
             else:
                 point_score = calculate_dist_score(*action["POINT"], *sol["POINT"])
@@ -253,7 +251,6 @@ def point_distance_check(completions, solution: list[dict], **kwargs):
         to_score = None
         if "to" in sol:
             if "to" not in action:
-                print("To not found in action: ", action)
                 to_score = 0.0
             else:
                 if isinstance(sol["to"], list):
@@ -449,14 +446,17 @@ class GUIRFTDataset(Dataset):
                 print("Error while loading image: ", img_file)
                 return self[random.randint(0,len(self.data)-1)]
             h,w = img.size
-            img = img.resize((w//2,h//2),resample=Image.Resampling.BILINEAR)
+            img = img.resize((w//3,h//3),resample=Image.Resampling.BILINEAR)
             break
         
-        
-        # process the conversation
-        user_query = item["conversations"][-2]["content"]
-        user_query = re.match(r"<Question>(.*?)</Question>", user_query).group(1)
-        action = json.loads(item["conversations"][-1]['content'])
+        try:
+            # process the conversation
+            user_query = item["conversations"][-2]["content"]
+            user_query = re.match(r"<Question>(.*?)</Question>", user_query).group(1)
+            action = json.loads(item["conversations"][-1]['content'])
+        except:
+            print("Error while processing conversation.")
+            return self[random.randint(0,len(self.data)-1)]
         conv = []
         conv.append({"role":"system","content":SYSTEM_PROMPT})
         conv.append({"role":"user","content":[
