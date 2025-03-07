@@ -52,7 +52,6 @@ from PIL import Image
 import copy
 from torch.utils.data import Sampler
 
-
 if is_peft_available():
     from peft import PeftConfig, get_peft_model
 
@@ -388,7 +387,7 @@ class MiniCPMVGRPOTrainer(Trainer):
         for i, reward_func in enumerate(self.reward_funcs):
             if isinstance(reward_func, PreTrainedModel):
                 self.reward_funcs[i] = self.accelerator.prepare_model(reward_func, evaluation_mode=True)
-
+                
     def _enable_gradient_checkpointing(self, model: PreTrainedModel, args: GRPOConfig) -> PreTrainedModel:
         """Enables gradient checkpointing for the model."""
         # Ensure use_cache is disabled
@@ -516,6 +515,7 @@ class MiniCPMVGRPOTrainer(Trainer):
                 max_new_tokens = self.max_completion_length,
                 # return_dict_in_generate=True,
                 # output_logits = True,
+                synced_gpus=True
             )
             # print(prompt_ids,self.num_generations,completion_ids)
             if isinstance(completion_ids, tuple):
@@ -523,27 +523,18 @@ class MiniCPMVGRPOTrainer(Trainer):
                 completion_ids = completion_ids[1].sequences
                 # print(completion_ids)
                 # print(completion_ids[0])
+
+            # print(f"Generated {len(completion_ids)} completions.")
             prompt_completion_ids = torch.cat([prompt_ids.repeat_interleave(self.num_generations, dim=0), completion_ids], dim=-1)
-            # print(prompt_completion_ids["logits"][0].shape)
-            # print(prompt_completion_ids.keys())
-            # print(self.processing_class.batch_decode(prompt_completion_ids, skip_special_tokens=True))
+
             
-            # print(prompt_ids.shape)
             prompt_length = prompt_ids.size(1)
-            # prompt_ids = prompt_completion_ids[:, :prompt_length]
-            # completion_ids = prompt_completion_ids[:, prompt_length:]
             prompt_ids = prompt_ids
             completion_ids = completion_ids
             prompt_mask = prompt_mask.repeat_interleave(self.num_generations, dim=0)
 
-        # print(prompt_ids.shape,completion_ids.shape)
-        # print(prompt_ids)
-        # print(self.processing_class.batch_decode(torch.cat([prompt_ids,completion_ids[:1]],dim=-1), skip_special_tokens=True))
-        
-
+        # print("Unwrapping model for generation")
         # Mask everything after the first EOS token
-        # print(completion_ids)
-        # is_eos = completion_ids == self.processing_class.eos_token_id
         im_eos = completion_ids == self.processing_class.tokenizer.convert_tokens_to_ids('<|im_end|>')
         s_eos = completion_ids == self.processing_class.tokenizer.convert_tokens_to_ids('</s>')
         is_eos = im_eos | s_eos
@@ -586,6 +577,10 @@ class MiniCPMVGRPOTrainer(Trainer):
                 #     self.ref_model, prompt_completion_ids, attention_mask, 
                 #     # pixel_values, image_grid_thw
                 # )
+                # print("Obtain reference model per token logps")
+                # with unwrap_model_for_generation(self.ref_model, self.accelerator) as unwrapped_model:
+                #     ref_per_token_logps = self._get_vlm_per_token_logps(unwrapped_model, prompt_inputs)
+                
                 ref_per_token_logps = self._get_vlm_per_token_logps(self.ref_model, prompt_inputs)
             else:
                 with self.accelerator.unwrap_model(model).disable_adapter():
@@ -594,16 +589,16 @@ class MiniCPMVGRPOTrainer(Trainer):
                     #     model, prompt_completion_ids, attention_mask, 
                     #     # pixel_values, image_grid_thw
                     # )
+        # print("Decoding completions")
         ref_per_token_logps = ref_per_token_logps[:, prompt_length - 1:]
-
         # Decode the generated completions
         completions = self.processing_class.batch_decode(completion_ids, skip_special_tokens=True)
         if is_conversational(inputs[0]):
             completions = [[{"role": "assistant", "content": completion}] for completion in completions]
-
+        
         # Compute the rewards
         prompts = [prompt for prompt in prompts for _ in range(self.num_generations)]
-
+        # print("Computing rewards")
         rewards_per_func = torch.zeros(len(prompts), len(self.reward_funcs), device=device)
         for i, (reward_func, reward_processing_class) in enumerate(
             zip(self.reward_funcs, self.reward_processing_classes)
@@ -629,7 +624,7 @@ class MiniCPMVGRPOTrainer(Trainer):
                         reward_kwargs[key].extend([example[key]] * self.num_generations)
                 output_reward_func = reward_func(prompts=prompts, completions=completions, **reward_kwargs)
                 rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
-
+        # print("Calculating Advantages")
         # Sum the rewards from all reward functions
         rewards = rewards_per_func.sum(dim=1)
 
@@ -829,4 +824,3 @@ class MiniCPMVGRPOTrainer(Trainer):
             mini_repeat_count=self.num_generations,
             seed=self.args.seed,
         )
-

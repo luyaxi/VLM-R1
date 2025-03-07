@@ -9,6 +9,8 @@ from PIL import Image
 import os
 import difflib
 
+from concurrent.futures import ProcessPoolExecutor
+
 SCHEMA = {
     "type": "object",
     "description": "执行操作并决定当前任务状态",
@@ -97,301 +99,207 @@ SCHEMA = {
 }
 
 def load_and_validate_action(res:str,):
-    action_str = re.search(r'```json(.*?)```', res, re.DOTALL)
-    if action_str:
-        action_str = action_str.group(1).strip()
-    else:
-        action_str = res
+    # action_str = re.search(r'```json(.*?)```', res, re.DOTALL)
+    # if action_str:
+    #     action_str = action_str.group(1).strip()
+    # else:
+    #     action_str = res
+    action_str = res
     
     action = json5.loads(action_str,allow_duplicate_keys=False)
     jsonschema.validate(action, SCHEMA)
     return action
 
+global_executor = ProcessPoolExecutor(max_workers=8)
+
+def _action_schema_check(res:str):
+    try:
+        action:dict = load_and_validate_action(res)
+        return 1.0
+    except jsonschema.ValidationError as e:
+        return 0.5
+    except Exception as e:
+        return 0.0
+
 def action_schema_check(completions, **kwargs):
-    contents = [completion[0]["content"] for completion in completions]
+    global global_executor
+    futures = [global_executor.submit(_action_schema_check,completion[0]["content"],) for completion in completions]
     scores = []
-    for res in contents:
-        res:str = res.strip()
-        # then load and validate the action
+    for future in futures:
         try:
-            action:dict = load_and_validate_action(res)
-            scores.append(1.0)
-        except jsonschema.ValidationError as e:
-            # print("Invalid Action Format: ", res)
-            scores.append(0.5)
-        except Exception as e:
-            # print("Error while loading action: ", res)
+            scores.append(future.result(timeout=5))
+        except TimeoutError as e:
+            print("Timeout while checking schema.")
             scores.append(0.0)
 
     return scores
+
+def _action_type_check(res:str, solution: list[dict]):
+    try:
+        action = load_and_validate_action(res)
+        jaccard_index = len(set(action.keys()) & set(solution.keys())) / len(set(solution.keys()).union(set(action.keys())))
+        if jaccard_index < 1:
+            print("Mismatched keys in action, Expected: ", solution.keys(), " Got: ", action.keys())
+        return jaccard_index
+    except Exception as e:
+        return 0.0
+    
 
 def action_type_check(completions, solution: list[dict], **kwargs):
-    contents = [completion[0]["content"] for completion in completions]
+    global global_executor
+    futures = [global_executor.submit(_action_type_check,completion[0]["content"],sol) for completion,sol in zip(completions,solution)]
     scores = []
-    for res, sol in zip(contents, solution):
-        res:str = res.strip()
-        # then load and validate the action
+    for future in futures:
         try:
-            action: dict = load_and_validate_action(res)
-            if set(action.keys()) != set(sol.keys()):
-                print("Mismatched keys in action, Expected: ", sol.keys(), " Got: ", action.keys())
-                scores.append(0.0)
-            else:
-                scores.append(1.0)
-        except Exception as e:
+            scores.append(future.result(timeout=5))
+        except TimeoutError as e:
+            print("Timeout while checking type.")
             scores.append(0.0)
 
     return scores
+
+def _action_args_check(res:str, solution: list[dict]):
+    try:
+        action = load_and_validate_action(res)
+    except Exception as e:
+        return 0.0
+    
+    sub_scores = []
+    for k in solution.keys():
+        if k not in action:
+            sub_scores.append(0.0)
+            continue
+        sub_score = 0.0
+        match k:
+            case "POINT":
+                continue
+            
+            case "duration":
+                if action[k] > 150 or action[k] < 5000:
+                    sub_score = 1.0
+                else:
+                    print("Invalid duration: ", action[k])
+                    sub_score = 0.0
+            
+            case "TYPE":
+                similarity = difflib.SequenceMatcher(None, action[k], solution[k]).ratio()
+                sub_score = similarity
+                print("Text: ",solution[k],", Got: ", action[k],". Similarity: ", similarity)
+                
+            case "to":
+                if isinstance(solution[k], list):
+                    continue
+                else:
+                    if isinstance(action[k],list):
+                        sub_score = 0.0
+                        print(f"Invalid to for direction {solution[k]}: ", action[k])
+                    else:
+                        if action[k] == solution[k]:
+                            sub_score = 1.0
+                        else:
+                            sub_score = 0.0
+                            print("Invalid to: ", action[k])
+            
+            case _:
+                if solution[k] is None:
+                    if action[k] is None:
+                        sub_score = 1.0
+                    else:
+                        print("Required ", k, ", got: ", action[k])
+                        sub_score = 0.0
+                else:
+                    if action[k] == solution[k]:
+                        sub_score = 1.0
+                    else:
+                        print("Required ", k, ", got: ", action[k])
+                        sub_score = 0.0
+                        
+        sub_scores.append(sub_score)
+    if not sub_scores:
+        print("No args to check.")
+        return 0.0
+    else:
+        return sum(sub_scores) / len(sub_scores)
+    
 
 def action_args_check(completions, solution: list[dict], **kwargs):
-    contents = [completion[0]["content"] for completion in completions]
+    global global_executor
+    futures = [global_executor.submit(_action_args_check,completion[0]["content"],sol) for completion,sol in zip(completions,solution)]
+
     scores = []
-    for res, sol in zip(contents, solution):
-        res:str = res.strip()
-        # then load and validate the action
+    for future in futures:
         try:
-            action: dict = load_and_validate_action(res)
-        except Exception as e:
+            scores.append(future.result(timeout=5))
+        except TimeoutError as e:
+            print("Timeout while checking type.")
             scores.append(0.0)
-            continue
-        
-        sub_scores = []
-        for k in sol.keys():
-            if k not in action:
-                sub_scores.append(0.0)
-                continue
-            sub_score = 0.0
-            match k:
-                case "POINT":
-                    continue
-                
-                case "duration":
-                    if action[k] > 150 or action[k] < 5000:
-                        sub_score = 1.0
-                    else:
-                        print("Invalid duration: ", action[k])
-                        sub_score = 0.0
-                
-                case "TYPE":
-                    similarity = difflib.SequenceMatcher(None, action[k], sol[k]).ratio()
-                    sub_score = similarity
-                    print("Text: ",sol[k],", Got: ", action[k],". Similarity: ", similarity)
-                    
-                case "to":
-                    if isinstance(sol[k], list):
-                        continue
-                    else:
-                        if isinstance(action[k],list):
-                            sub_score = 0.0
-                            print(f"Invalid to for direction {sol[k]}: ", action[k])
-                        else:
-                            if action[k] == sol[k]:
-                                sub_score = 1.0
-                            else:
-                                sub_score = 0.0
-                                print("Invalid to: ", action[k])
-                
-                case _:
-                    if sol[k] is None:
-                        if action[k] is None:
-                            sub_score = 1.0
-                        else:
-                            print("Required ", k, ", got: ", action[k])
-                            sub_score = 0.0
-                    else:
-                        if action[k] == sol[k]:
-                            sub_score = 1.0
-                        else:
-                            print("Required ", k, ", got: ", action[k])
-                            sub_score = 0.0
-                            
-            sub_scores.append(sub_score)
-        if not sub_scores:
-            print("No args to check.")
-            scores.append(0.0)
-        else:
-            scores.append(sum(sub_scores) / len(sub_scores))
-    
+
     return scores
+
+def calculate_dist_score(x:int,y:int,gt_x:int,gt_y:int):
+    dist_score = 0.0
+    delta_x = abs(gt_x - x)
+    delta_y = abs(gt_y - y)
+    max_delta = max(delta_x,delta_y)
+    if max_delta > 500:
+        dist_score = 0.0
+        print("Pixel Distance too large: ", max_delta)
+    else:
+        dist_score = 1 - max_delta / 1000
+    
+    return dist_score
+
+
+def _point_distance_check(res:str, solution: list[dict]):
+    try:
+        action = load_and_validate_action(res)
+    except Exception as e:
+        return 0.0
+    
+    point_score = None
+    if "POINT" in solution:
+        if "POINT" not in action:
+            point_score = 0.0
+        else:
+            point_score = calculate_dist_score(*action["POINT"], *solution["POINT"])
+    
+    to_score = None
+    if "to" in solution:
+        if "to" not in action:
+            to_score = 0.0
+        else:
+            if isinstance(solution["to"], list):
+                if not isinstance(action["to"],list):
+                    print("Must be coordinate to format: ", action)
+                    to_score = 0.0
+                else:
+                    to_score = calculate_dist_score(*action["to"], *solution["to"])
+            else:
+                to_score = None
+    
+    if point_score is not None and to_score is not None:
+        return (point_score + to_score) / 2
+    elif point_score is not None and to_score is None:
+        return point_score
+    elif point_score is None and to_score is not None:
+        return to_score
+    else:
+        return 0.0
+
 
 def point_distance_check(completions, solution: list[dict], **kwargs):
-    contents = [completion[0]["content"] for completion in completions]
+    global global_executor
+    futures = [global_executor.submit(_point_distance_check,completion[0]["content"],sol) for completion,sol in zip(completions,solution)]
     scores = []
-    
-    def calculate_dist_score(x,y,gt_x,gt_y):
-        dist_score = 0.0
-        delta_x = abs(gt_x - x)
-        delta_y = abs(gt_y - y)
-        max_delta = max(delta_x,delta_y)
-        if max_delta > 300:
-            dist_score = 0.0
-            print("Pixel Distance too large: ", max_delta)
-        else:
-            dist_score = 1 - max_delta / 1000
-        
-        return dist_score
-    
-    for res, sol in zip(contents, solution):
-        res:str = res.strip()
-
-        # then load and validate the action
+    for future in futures:
         try:
-            action: dict = load_and_validate_action(res)
-        except Exception as e:
-            scores.append(0.0)
-            continue
-        
-        point_score = None
-        if "POINT" in sol:
-            if "POINT" not in action:
-                point_score = 0.0
-            else:
-                point_score = calculate_dist_score(*action["POINT"], *sol["POINT"])
-        
-        to_score = None
-        if "to" in sol:
-            if "to" not in action:
-                to_score = 0.0
-            else:
-                if isinstance(sol["to"], list):
-                    if not isinstance(action["to"],list):
-                        print("Must be coordinate to format: ", action)
-                        to_score = 0.0
-                    else:
-                        to_score = calculate_dist_score(*action["to"], *sol["to"])
-                else:
-                    to_score = None
-        
-        if point_score is not None and to_score is not None:
-            scores.append((point_score + to_score) / 2)
-        elif point_score is not None and to_score is None:
-            scores.append(point_score)
-        elif point_score is None and to_score is not None:
-            scores.append(to_score)
-        else:
+            scores.append(future.result(timeout=5))
+        except TimeoutError as e:
+            print("Timeout while checking type.")
             scores.append(0.0)
     
     return scores
-        
-def action_match_reward(completions, solution: list[dict], resolution: list[tuple[int,int]],**kwargs):
-    contents = [completion[0]["content"] for completion in completions]
-    scores = []
-    for res, sol, img_res in zip(contents, solution, resolution):
-        res:str = res.strip()
-        score = 0.0
-        
-        # first extract the json action from the completion
-        action_str = re.search(r'```json(.*?)```', res, re.DOTALL)
-        if action_str:
-            action_str = action_str.group(1).strip()
-        else:
-            action_str = res
-        
-        # then load and validate the action
-        try:
-            action = json5.loads(action_str)
-            jsonschema.validate(action, SCHEMA)
-        except jsonschema.ValidationError as e:
-            print("Invalid Action Format: ", action)
-            scores.append(0.05)
-            continue
-        except Exception as e:
-            print("Error while loading action: ", action_str)
-            scores.append(0.0)
-            continue
-        
-        # check if the action is same
-        score = 0.1
-        
-        # type check
-        extra_key = set(action.keys()) - set(sol.keys())
-        if extra_key:
-            score = 0.1
-            scores.append(score)
-            continue
 
-        for k in sol.keys():
-            if k in action:
-                score += 0.05
-        
-        sub_scores = []
-        for k in sol.keys():
-            if k not in action:
-                sub_scores.append(0.0)
-                continue
-            sub_score = 0.0
-            # type check passed, now check args
-            match k:
-                case "POINT":
-                    # calculate the distance between the two points
-                    x,y = action[k]
-                    gt_x, gt_y = sol[k]
-                    h,w = img_res
-                    
-                    # calculate the score according to the L1 distance
-                    l1_dist = abs(gt_x - x) + abs(gt_y - y)
-                    max_l1_dist = 1000+1000
-                    sub_score = 1 - l1_dist / max_l1_dist
-                    
-                    if abs(gt_x - x) > 200 or abs(gt_y - y) > 200:
-                        sub_score = 0.0
-
-                case "duration":
-                    if action[k] > 150 or action[k] < 5000:
-                        sub_score = 1.0
-                    else:
-                        sub_score = 0.0
-                
-                case "TYPE":
-                    similarity = difflib.SequenceMatcher(None, action[k], sol[k]).ratio()
-                    sub_score = similarity
-                
-                case "to":
-                    if isinstance(action[k], list):
-                        if not isinstance(sol[k],list):
-                            sub_score = 0.0
-                            break
-                        # calculate the distance between the two points
-                        x,y = action[k]
-                        gt_x, gt_y = sol[k]
-                        h,w = img_res
-                        
-                        # calculate the score according to the L1 distance
-                        l1_dist = abs(gt_x - x) + abs(gt_y - y)
-                        max_l1_dist = 1000+1000
-                        sub_score = 1 - l1_dist / max_l1_dist
-                        
-                        if abs(gt_x - x) > 200 or abs(gt_y - y) > 200:
-                            sub_score = 0.0
-
-                    else:
-                        if isinstance(sol[k],list):
-                            sub_score = 0.0
-                        else:
-                            try:
-                                if action[k] != sol[k]:
-                                    sub_score = 0.0
-                                else:
-                                    sub_score = 1.0
-                            except:
-                                sub_score = 0.0
-
-                
-                case _:
-                    if action[k] != sol[k]:
-                        sub_score = 0.0
-                    else:
-                        sub_score = 1.0
-            
-            sub_scores.append(sub_score)
-            
-        subscore_max = (1 - score) / len(sub_scores)
-        for sub_score in sub_scores:
-            score += sub_score * subscore_max
-            
-        scores.append(score)
-
-    return scores
 
 def compact_json_dumps(obj):
     return json.dumps(obj, indent=None, separators=(",", ":"), ensure_ascii=False)
@@ -404,19 +312,17 @@ SYSTEM_PROMPT = f"""# Role
 针对用户意图，根据输入的当前屏幕截图、屏幕元素描述，输出下一步的操作。
 
 # Rule
-- 以紧凑JSON格式输出__一个__操作
+- 以紧凑JSON格式输出**一个**操作
 - 输出操作必须遵循Schema约束
-- 以行注释（//）的形式描述你的思考过程
+- 通过注释描述你的思考过程
 
 # Schema
 """ + compact_json_dumps(SCHEMA) + \
 """
 # Example Output
-
-{
-// 我应该...
-"POINT":[100,200]
-}"""
+/* 当前界面... */
+{"POINT":[100,200]}
+```"""
 
 
 class GUIRFTDataset(Dataset):
@@ -446,7 +352,18 @@ class GUIRFTDataset(Dataset):
                 print("Error while loading image: ", img_file)
                 return self[random.randint(0,len(self.data)-1)]
             h,w = img.size
-            img = img.resize((w//3,h//3),resample=Image.Resampling.BILINEAR)
+            
+            # resize the max height and width to 1000
+            max_line = 1024
+            if h > max_line:
+                w = int(w * max_line / h)
+                h = max_line
+            if w > max_line:
+                h = int(h * max_line / w)
+                w = max_line
+            img = img.resize((h,w),resample=Image.Resampling.BILINEAR)
+            # img = img.resize((h//2,w//2),resample=Image.Resampling.BILINEAR)
+            
             break
         
         try:
@@ -473,14 +390,6 @@ class GUIRFTDataset(Dataset):
 
 
 
-# if __name__=="__main__":
-    # print(action_match_reward(
-    #     [
-    #         ({"content": "// hello\n{\n  \"POINT\": [100, 200],\n  \"duration\": 200\n}"},0),
-    #     ], 
-    #     [{
-    #         "POINT": [100, 200],
-    #         "duration": 200
-    #     }], 
-    #     [(1000, 2000)],
-    # ))
+if __name__=="__main__":
+    dataset = GUIRFTDataset("/data3/workhome/luyaxi/VCPM-R1/GUIData/mb_data/tasks.jsonl")
+    dataset[10]["image"].save("sample.png")

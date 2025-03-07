@@ -152,6 +152,15 @@ class GRPOConfig(TrainingArguments):
             "must be divisible by this value."
         },
     )
+    
+    mini_num_generations: Optional[int] = field(
+        default=1,
+        metadata={
+            "help": "Number of generations to sample for the mini-batch. The global generation batch size (num_generations * num_processes"
+            " * per_device_batch_size) must be divisible by this value."
+        }
+    )
+    
     temperature: Optional[float] = field(
         default=0.9,
         metadata={"help": "Temperature for sampling. The higher the temperature, the more random the completions."},
