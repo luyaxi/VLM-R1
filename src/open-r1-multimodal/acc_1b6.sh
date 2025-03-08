@@ -4,7 +4,7 @@ cd `dirname $0`
 
 export DEBUG_MODE="true"
 
-RUN_NAME="MiniCPM-V-1B6-GRPO-GUI-cIoU-diverse"
+RUN_NAME="MiniCPM-V-1B6-GRPO-GUI-cIoU-diverseprompt"
 export LOG_PATH="./debug_log_$RUN_NAME.txt"
 export NCCL_P2P_LEVEL=NVL
 

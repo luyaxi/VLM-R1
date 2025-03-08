@@ -3,7 +3,7 @@
 source ~/miniconda3/bin/activate vcpm
 cd `dirname $0`
 
-RUN_NAME="MiniCPM-26o-GRPO-GUI-thought-cIoU-diverse"
+RUN_NAME="MiniCPM-26o-GRPO-GUI-cIoU-diverseprompt"
 
 set -ex
 CUDA_DEVICE_MAX_CONNECTIONS=1 UCX_NET_DEVICES=bond0 GLOO_SOCKET_IFNAME=bond0 NCCL_SOCKET_IFNAME=bond0 NCCL_IB_HCA="mlx5_2,mlx5_3,mlx5_5,mlx5_6" WANDB_PROJECT=CPM-RFT accelerate launch \
