@@ -332,13 +332,13 @@ class MiniCPMVGRPOTrainer(Trainer):
         self.max_prompt_length = args.max_prompt_length
         self.max_completion_length = args.max_completion_length  # = |o_i| in the GRPO paper
         self.num_generations = args.num_generations  # = G in the GRPO paper
-        self.generation_config = GenerationConfig(
-            max_new_tokens=self.max_completion_length,
-            do_sample=True,  
-            temperature=1, # HACK
-            num_return_sequences=self.num_generations,
-            pad_token_id=pad_token_id,
-        )
+        # self.generation_config = GenerationConfig(
+        #     max_new_tokens=self.max_completion_length,
+        #     do_sample=True,  
+        #     temperature=1, # HACK
+        #     num_return_sequences=self.num_generations,
+        #     pad_token_id=pad_token_id,
+        # )
         self.beta = args.beta
         self.epsilon = args.epsilon
 
@@ -506,12 +506,14 @@ class MiniCPMVGRPOTrainer(Trainer):
             completion_ids = unwrapped_model.generate(
                 **prompt_inputs,
                 tokenizer=self.processing_class.tokenizer,
-                top_p = self.generation_config.top_p,
-                top_k = self.generation_config.top_k,
-                temperature = self.generation_config.temperature,
-                do_sample = True,
-                repetition_penalty = self.generation_config.repetition_penalty,
-                num_return_sequences = self.generation_config.num_return_sequences,
+                # do_sample = True,
+                # top_p = 0.6,
+                # temperature = 1,
+                # repetition_penalty = 1.05,
+                num_beams = self.num_generations,
+                num_beam_groups = self.num_generations,
+                diversity_penalty=3.0,
+                num_return_sequences = self.num_generations,
                 max_new_tokens = self.max_completion_length,
                 # return_dict_in_generate=True,
                 # output_logits = True,
@@ -624,6 +626,10 @@ class MiniCPMVGRPOTrainer(Trainer):
                         reward_kwargs[key].extend([example[key]] * self.num_generations)
                 output_reward_func = reward_func(prompts=prompts, completions=completions, **reward_kwargs)
                 rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
+                # log highest reward
+                highest_reward = self.accelerator.gather_for_metrics(rewards_per_func[:, i]).max().item()
+                self._metrics[f"rewards/{reward_func.__name__}/max"].append(highest_reward)
+                
         # print("Calculating Advantages")
         # Sum the rewards from all reward functions
         rewards = rewards_per_func.sum(dim=1)
@@ -637,10 +643,8 @@ class MiniCPMVGRPOTrainer(Trainer):
         std_grouped_rewards = std_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
         advantages = (rewards - mean_grouped_rewards) / (std_grouped_rewards + 1e-4)
         
-        # print the completion with the highest reward
-        print("Highest reward completion:")
-        print(completions[rewards.argmax().item()][0]['content'])
-
+        self.accelerator.print(f"Highest reward completion: {completions[rewards.argmax().item()][0]['content']}")
+    
         # Log the metrics
         completion_length = self.accelerator.gather_for_metrics(completion_mask.sum(1)).float().mean().item()
         self._metrics["completion_length"].append(completion_length)

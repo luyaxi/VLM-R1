@@ -68,15 +68,14 @@ class GRPOScriptArguments(ScriptArguments):
         metadata={"help": "Root directory of the image"},
     )
     
-from gui_eval import action_schema_check, action_type_check, action_args_check, point_distance_check, GUIRFTDataset
+from gui_eval import action_schema_check,action_type_check, action_args_check, GUIRFTDataset
 reward_funcs_registry = {
     # "accuracy": iou_reward,
     # "format": format_reward,
     # "gui": action_match_reward,
-    "schema":action_schema_check,
+    "schema": action_schema_check,
     "type":action_type_check,
     "args":action_args_check,
-    "point": point_distance_check
 }
 
 

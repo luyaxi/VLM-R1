@@ -23,34 +23,48 @@ processor = AutoProcessor.from_pretrained(model_path,trust_remote_code=True)
 # model.save_pretrained("/data3/workhome/luyaxi/VCPM-R1/models/MiniCPM3-V-1_6B-SFT1000",save_optimizer=False,)
 
 
-# inputs = processor(
-#     processor.tokenizer.apply_chat_template([
-#         {"role": "user", "content": "fix the code in the given pic.\n(<image>./</image>)"},
-#     ],tokenize=False,add_generation_prompt=True),
-#     [Image.open("test.png")],
-#     return_tensors="pt"    
-# ).to("cuda")
+inputs = processor(
+    processor.tokenizer.apply_chat_template([
+        {"role": "user", "content": "fix the code in the given pic. start with ```python \n(<image>./</image>)"},
+    ],tokenize=False,add_generation_prompt=True),
+    [Image.open("sample.png")],
+    return_tensors="pt"    
+).to("cuda")
 
 # inputs["inputs_embeds"],_ = model.get_vllm_embedding(inputs)
 # import pdb 
 # pdb.set_trace()
 # inputs = model.llm.prepare_inputs_for_generation(**inputs)
 # output = model.llm(**inputs)
+inputs.pop('image_sizes')
 
+res = model.generate(
+    **inputs,
+    tokenizer=processor.tokenizer,
+    # top_p=0.6,
+    # do_sample=True,
+    # temperature = 1,
+    num_beams=4,
+    num_beam_groups=4,
+    diversity_penalty=1.0,
+    num_return_sequences=4,
+    max_new_tokens=100
+)
+for idx, r in enumerate(res[0]):
+    print(f"gen {idx}: {r}")
 
+# conv = [{
+#     "role":"user",
+#     "content": [
+#         "fix the code in the given pic.",
+#         Image.open("test.png")
+#     ]
+# }]
 
-conv = [{
-    "role":"user",
-    "content": [
-        "fix the code in the given pic.",
-        Image.open("test.png")
-    ]
-}]
+# # conv = [
+# #     {"role": "user", "content":"how are you"},
+# # ]
 
-# conv = [
-#     {"role": "user", "content":"how are you"},
-# ]
+# res = model.chat(None,conv,tokenizer=tokenizer)
 
-res = model.chat(None,conv,tokenizer=tokenizer)
-
-print(res)
+# print(res)
