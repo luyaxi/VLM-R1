@@ -100,7 +100,7 @@ SCHEMA = {
         },
         "Location": {
             "type": "array",
-            "description": "由两个坐标组成的数组，表示一个矩形区域，第一个元素为左上角坐标，第二个元素为右下角坐标。两个坐标的连线不平行于X轴或Y轴。",
+            "description": "由两个坐标组成的数组，表示一个矩形区域。两个坐标的连线不平行于X轴或Y轴。",
             "items": {
                 "$ref": "#/$defs/Coordinate"
             },
@@ -294,8 +294,14 @@ def action_args_check(completions, solution: list[dict], resolution, bboxs,**kwa
 
 
 def calculate_dist_score(pred_loc: list[list[int,int]], gt_loc: list[int,int], res: tuple[int,int], bbox: list[int]):    
-    pred_left_top = [int(pred_loc[0][0]/1000*res[0]),int(pred_loc[0][1]/1000*res[1])]
-    pred_right_bottom = [int(pred_loc[1][0]/1000*res[0]),int(pred_loc[1][1]/1000*res[1])]
+    left = min(pred_loc[0][0], pred_loc[1][0])
+    top = min(pred_loc[0][1], pred_loc[1][1])
+    right = max(pred_loc[0][0], pred_loc[1][0])
+    bottom = max(pred_loc[0][1], pred_loc[1][1])
+    
+    
+    pred_left_top = [int(left /1000*res[0]),int(top/1000*res[1])]
+    pred_right_bottom = [int(right/1000*res[0]),int(bottom/1000*res[1])]
     
     if pred_left_top[0] >= pred_right_bottom[0] or pred_left_top[1] >= pred_right_bottom[1]:
         print("Invalid prediction box: ", pred_left_top, pred_right_bottom)
@@ -306,8 +312,8 @@ def calculate_dist_score(pred_loc: list[list[int,int]], gt_loc: list[int,int], r
         print("No bbox provided.")
         gt_x = gt_loc[0]
         gt_y = gt_loc[1]
-        x_ratio = (pred_loc[0][0] + pred_loc[1][0]) / 2000
-        y_ratio = (pred_loc[0][1] + pred_loc[1][1]) / 2000
+        x_ratio = (left + right) / 2000
+        y_ratio = (top + bottom) / 2000
         delta_x = abs(gt_x - x_ratio)
         delta_y = abs(gt_y - y_ratio)
         max_delta = max(delta_x,delta_y)
