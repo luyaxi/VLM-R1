@@ -40,13 +40,12 @@ inputs.pop('image_sizes')
 
 res = model.generate(
     **inputs,
+    do_sample = True,
     tokenizer=processor.tokenizer,
-    # top_p=0.6,
-    # do_sample=True,
-    # temperature = 1,
-    num_beams=4,
-    num_beam_groups=4,
-    diversity_penalty=1.0,
+    top_p = 0.98,
+    temperature = 1,
+    repetition_penalty = 1.2,
+    num_beams = 4,
     num_return_sequences=4,
     max_new_tokens=100
 )
