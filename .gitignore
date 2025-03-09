@@ -2,7 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
+.deepspeed_env
 # C extensions
 *.so
 
@@ -188,3 +188,4 @@ images_eval/
 runs/
 temps/
 src/open-r1-multimodal/src/open_r1/grpo_jsonl_ocr.py
+src/open-r1-multimodal/.deepspeed_env

@@ -308,9 +308,10 @@ def calculate_dist_score(pred_loc: list[list[int,int]], gt_loc: list[int,int], r
     right = max(pred_loc[0][0], pred_loc[1][0])
     bottom = max(pred_loc[0][1], pred_loc[1][1])
     
+    W,H = res
     
-    pred_left_top = [int(left /1000*res[0]),int(top/1000*res[1])]
-    pred_right_bottom = [int(right/1000*res[0]),int(bottom/1000*res[1])]
+    pred_left_top = [int(left/1000*W),int(top/1000*H)]
+    pred_right_bottom = [int(right/1000*W),int(bottom/1000*H)]
     
     if pred_left_top[0] >= pred_right_bottom[0] or pred_left_top[1] >= pred_right_bottom[1]:
         print("Invalid prediction box: ", pred_left_top, pred_right_bottom)
@@ -427,7 +428,7 @@ class GUIRFTDataset(Dataset):
                 print("Error while loading image: ", img_file)
                 return self[random.randint(0,len(self.data)-1)]
             resolution = origin_img.size
-            h,w = resolution
+            w,h = resolution
             # resize the max height and width to 1000
             max_line = 1024
             if h > max_line:
@@ -436,7 +437,7 @@ class GUIRFTDataset(Dataset):
             if w > max_line:
                 h = int(h * max_line / w)
                 w = max_line
-            img = origin_img.resize((h,w),resample=Image.Resampling.BILINEAR)
+            img = origin_img.resize((w,h),resample=Image.Resampling.BILINEAR)
             
             break
         
@@ -720,5 +721,7 @@ if __name__=="__main__":
     item = dataset[0]
     img = item["fullres_image"]
     draw = ImageDraw.Draw(img)
+    print(item["bboxs"])
+    print(item["resolution"])
     draw.rectangle(item["bboxs"][0][0] + item["bboxs"][0][1],outline="red",width=3)
     img.save("test.png")

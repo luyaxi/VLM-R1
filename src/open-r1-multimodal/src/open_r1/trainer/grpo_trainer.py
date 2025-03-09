@@ -584,15 +584,16 @@ class MiniCPMVGRPOTrainer(Trainer):
                 #     ref_per_token_logps = self._get_vlm_per_token_logps(unwrapped_model, prompt_inputs)
                 
                 ref_per_token_logps = self._get_vlm_per_token_logps(self.ref_model, prompt_inputs)
+                ref_per_token_logps = ref_per_token_logps[:, prompt_length - 1:]
             else:
                 with self.accelerator.unwrap_model(model).disable_adapter():
                     ref_per_token_logps = self._get_vlm_per_token_logps(model, prompt_inputs)
+                ref_per_token_logps = ref_per_token_logps[:, prompt_length - 1:]
                     # ref_per_token_logps = self._get_per_token_logps(
                     #     model, prompt_completion_ids, attention_mask, 
                     #     # pixel_values, image_grid_thw
                     # )
         # print("Decoding completions")
-        ref_per_token_logps = ref_per_token_logps[:, prompt_length - 1:]
         # Decode the generated completions
         completions = self.processing_class.batch_decode(completion_ids, skip_special_tokens=True)
         if is_conversational(inputs[0]):

@@ -4,7 +4,7 @@ cd `dirname $0`
 
 export DEBUG_MODE="true"
 
-RUN_NAME="MiniCPM-V-1B6-GRPO-GUI-cIoU-diverseprompt"
+RUN_NAME="MiniCPM-V-1B6-GRPO-GUI-cIoU-diverseprompt-noKL"
 export LOG_PATH="./debug_log_$RUN_NAME.txt"
 export NCCL_P2P_LEVEL=NVL
 
@@ -23,6 +23,7 @@ WANDB_PROJECT=CPM-RFT CUDA_DEVICE_MAX_CONNECTIONS=1 UCX_NET_DEVICES=bond0 GLOO_S
     --gradient_accumulation_steps 4 \
     --logging_steps 1 \
     --bf16 \
+    --beta 0.0 \
     --data_seed 42 \
     --report_to wandb \
     --gradient_checkpointing true \
