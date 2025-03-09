@@ -3,7 +3,7 @@
 source ~/miniconda3/bin/activate vcpm
 cd `dirname $0`
 
-RUN_NAME="MiniCPM-26o-GRPO-GUI-cIoU-diverseprompt-noKL"
+RUN_NAME="MiniCPM-26o-GRPO-GUI-cIoU-diverseprompt-KL"
 
 set -ex
 CUDA_DEVICE_MAX_CONNECTIONS=1 UCX_NET_DEVICES=bond0 GLOO_SOCKET_IFNAME=bond0 NCCL_SOCKET_IFNAME=bond0 NCCL_IB_HCA="mlx5_2,mlx5_3,mlx5_5,mlx5_6" WANDB_PROJECT=CPM-RFT accelerate launch \
@@ -20,7 +20,7 @@ CUDA_DEVICE_MAX_CONNECTIONS=1 UCX_NET_DEVICES=bond0 GLOO_SOCKET_IFNAME=bond0 NCC
     --gradient_accumulation_steps 4 \
     --logging_steps 1 \
     --bf16 \
-    --beta 0.0 \
+    --beta 0.1 \
     --data_seed 42 \
     --report_to wandb \
     --gradient_checkpointing true \

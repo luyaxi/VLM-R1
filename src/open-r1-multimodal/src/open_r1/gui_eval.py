@@ -146,16 +146,17 @@ SYSTEM_PROMPT = f"""# Role
 
 
 def load_and_validate_action(res:str,):
-    # action_str = re.search(r'```json(.*?)```', res, re.DOTALL)
-    # if action_str:
-    #     action_str = action_str.group(1).strip()
-    # else:
-    #     action_str = res
-    if isinstance(res, str):
-        action_str = res
-        action = json5.loads(action_str,allow_duplicate_keys=False)
+    action_str = re.search(r'```json(.*?)```', res, re.DOTALL)
+    if action_str:
+        action_str = action_str.group(1).strip()
     else:
-        action = res
+        action_str = res
+    action = json5.loads(action_str,allow_duplicate_keys=False)
+    # if isinstance(res, str):
+    #     action_str = res
+    #     action = json5.loads(action_str,allow_duplicate_keys=False)
+    # else:
+    #     action = res
         
     jsonschema.validate(action, SCHEMA)
     return action
