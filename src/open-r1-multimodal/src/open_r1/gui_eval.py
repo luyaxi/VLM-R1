@@ -223,23 +223,19 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
     sub_scores = []
     for k in solution.keys():
         if k not in action:
-            sub_scores.append(0.0)
+            sub_scores.append(-1)
             continue
-        sub_score = 0.0
+        sub_score = -1
         match k:
             case "POINT":
-                if k in action:
-                    sub_score = calculate_dist_score(action[k], solution[k], reso, bbox[0])
-                else:
-                    print("No POINT in action: ", action)
-                    sub_score = 0.0
+                sub_score = calculate_dist_score(action[k], solution[k], reso, bbox[0])
             
             case "duration":
                 if action[k] > 150 or action[k] < 5000:
                     sub_score = 1.0
                 else:
                     print("Invalid duration: ", action[k])
-                    sub_score = 0.0
+                    sub_score = 0
             
             case "TYPE":
                 similarity = difflib.SequenceMatcher(None, action[k], solution[k]).ratio()
