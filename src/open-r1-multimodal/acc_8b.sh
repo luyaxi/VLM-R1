@@ -15,9 +15,9 @@ CUDA_DEVICE_MAX_CONNECTIONS=1 UCX_NET_DEVICES=bond0 GLOO_SOCKET_IFNAME=bond0 NCC
     --image_root  /data3/workhome/luyaxi/VCPM-R1/GUIData/new_mb_data \
     --max_prompt_length 2048 \
     --max_completion_length 128 \
-    --num_generations 4 \
+    --num_generations 8 \
     --per_device_train_batch_size 1 \
-    --gradient_accumulation_steps 16 \
+    --gradient_accumulation_steps 3 \
     --logging_steps 1 \
     --learning_rate 1e-6 \
     --bf16 \

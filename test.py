@@ -29,8 +29,7 @@ inputs = processor(
     ],tokenize=False,add_generation_prompt=True),
     [Image.open("sample.png")],
     return_tensors="pt"    
-).to("cuda")
-
+)
 # inputs["inputs_embeds"],_ = model.get_vllm_embedding(inputs)
 # import pdb 
 # pdb.set_trace()
@@ -39,7 +38,7 @@ inputs = processor(
 inputs.pop('image_sizes')
 
 res = model.generate(
-    **inputs,
+    **inputs.to("cuda"),
     do_sample = True,
     tokenizer=processor.tokenizer,
     top_p = 0.98,

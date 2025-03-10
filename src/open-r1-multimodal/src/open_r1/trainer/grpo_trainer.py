@@ -489,8 +489,6 @@ class MiniCPMVGRPOTrainer(Trainer):
         prompt_inputs = self.processing_class(
             prompts_lists,
             input_images_lists,
-            # max_sclie_nums=9,
-            # use_image_id=False,
             return_tensors="pt",
             max_length=self.max_prompt_length
         ).to(device)
@@ -502,7 +500,7 @@ class MiniCPMVGRPOTrainer(Trainer):
         prompt_ids, prompt_mask = prompt_inputs["input_ids"], prompt_inputs["attention_mask"]
 
         # Generate completions
-        with unwrap_model_for_generation(model, self.accelerator, gather_deepspeed3_params=False) as unwrapped_model:
+        with unwrap_model_for_generation(model, self.accelerator) as unwrapped_model:
             # prompt_completion_ids = unwrapped_model.generate(**prompt_inputs, generation_config=self.generation_config)
             
             completion_ids = unwrapped_model.generate(
