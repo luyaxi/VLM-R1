@@ -3,7 +3,7 @@ debug: false
 deepspeed_config:
   deepspeed_hostfile: /data3/workhome/luyaxi/VCPM-R1/src/open-r1-multimodal/hostfile
   deepspeed_multinode_launcher: pdsh
-  gradient_accumulation_steps: 4
+  gradient_accumulation_steps: 8
   offload_optimizer_device: cpu
   offload_param_device: cpu
   zero3_init_flag: true

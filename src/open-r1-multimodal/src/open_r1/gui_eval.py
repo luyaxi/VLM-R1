@@ -16,7 +16,7 @@ SCHEMA = {
     "type": "object",
     "description": "可用的动作和参数",
     "additionalProperties": False,
-    "required": ["thought"],
+    # "required": ["thought"],
     "properties": {
         "thought": {
             "type": "string",
@@ -76,12 +76,12 @@ SCHEMA = {
             "type": "string",
             "description": "当前任务的状态。特殊情况：satisfied，无需操作；impossible，任务无法完成；interrupt，任务中断；need_feedback，需要用户反馈；",
             "enum": [
-            "continue",
-            "finish",
-            "satisfied",
-            "impossible",
-            "interrupt",
-            "need_feedback"
+                "continue",
+                "finish",
+                "satisfied",
+                "impossible",
+                "interrupt",
+                "need_feedback"
             ],
             "default": "continue"
         }
@@ -146,18 +146,19 @@ SYSTEM_PROMPT = f"""# Role
 
 
 def load_and_validate_action(res:str,):
-    action_str = re.search(r'```json(.*?)```', res, re.DOTALL)
-    if action_str:
-        action_str = action_str.group(1).strip()
-    else:
-        action_str = res
-    action = json5.loads(action_str,allow_duplicate_keys=False)
+    # action_str = re.search(r'```json(.*?)```', res, re.DOTALL)
+    # if action_str:
+    #     action_str = action_str.group(1).strip()
+    # else:
+    #     action_str = res
+    # action = json5.loads(action_str,allow_duplicate_keys=False)
     # if isinstance(res, str):
     #     action_str = res
     #     action = json5.loads(action_str,allow_duplicate_keys=False)
     # else:
     #     action = res
-        
+    
+    action = json5.loads(res,allow_duplicate_keys=False)
     jsonschema.validate(action, SCHEMA)
     return action
 
@@ -194,6 +195,10 @@ def _action_type_check(res:str, solution: dict):
             action_keys.remove("thought")
         if "thought" in solution_keys:
             solution_keys.remove("thought")
+        
+        if len(action_keys) == 0:
+            return -1.0
+        
         jaccard_index = len(action_keys & solution_keys) / len(solution_keys.union(action_keys))
         if jaccard_index < 1:
             print("Mismatched keys in action, Expected: ", solution_keys, " Got: ", action_keys)
@@ -465,9 +470,11 @@ class GUIRFTDataset(Dataset):
             return self[random.randint(0,len(self.data)-1)]
         conv = []
         conv.append({"role":"system","content":random.choice(SYSTEM_PROMPTS)})
+        # conv.append({"role": "user", "content": "帮助我完成给定任务，请直接输出可解析的json格式操作指令"})
+        # conv.append({"role": "assistant", "content": '// 用户请求帮助，但未提供具体任务\n{"thought":"好的，请提供具体任务描述"}'})
         conv.append({"role":"user","content":[
             img, 
-            f"# 用户需求\n{user_query}"+"""# 输出格式\n// 这里是你的思考过程，长度适中\n{...这是动作...}"""
+            f"{user_query}"
         ]})
         
         return {

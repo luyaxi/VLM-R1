@@ -265,7 +265,9 @@ class MiniCPMVGRPOTrainer(Trainer):
             model = self._enable_gradient_checkpointing(model, args)
 
         # Reference model
-        if is_deepspeed_zero3_enabled():
+        if args.beta == 0.0:
+            self.ref_model = None
+        elif is_deepspeed_zero3_enabled():
             if "minicpm" in model_id.lower():
                 model_init_kwargs["trust_remote_code"] = True
             self.ref_model = AutoModelForCausalLM.from_pretrained(model_id, **model_init_kwargs)
@@ -500,17 +502,17 @@ class MiniCPMVGRPOTrainer(Trainer):
         prompt_ids, prompt_mask = prompt_inputs["input_ids"], prompt_inputs["attention_mask"]
 
         # Generate completions
-        with unwrap_model_for_generation(model, self.accelerator) as unwrapped_model:
+        with unwrap_model_for_generation(model, self.accelerator, gather_deepspeed3_params=False) as unwrapped_model:
             # prompt_completion_ids = unwrapped_model.generate(**prompt_inputs, generation_config=self.generation_config)
             
             completion_ids = unwrapped_model.generate(
                 **prompt_inputs,
                 tokenizer=self.processing_class.tokenizer,
                 do_sample = True,
-                top_p = 0.98,
+                # top_p = 0.98,
                 temperature = 1,
                 # temperature = 0.1,
-                repetition_penalty = 1.2,
+                repetition_penalty = 1.05,
                 # num_beams = self.num_generations,
                 # num_beam_groups = self.num_generations,
                 # diversity_penalty=3.0,
@@ -646,6 +648,7 @@ class MiniCPMVGRPOTrainer(Trainer):
         advantages = (rewards - mean_grouped_rewards) / (std_grouped_rewards + 1e-4)
         
         self.accelerator.print(f"Highest reward completion: {completions[rewards.argmax().item()][0]['content']}")
+        self.accelerator.print(f"Lowest reward completion: {completions[rewards.argmin().item()][0]['content']}")
     
         # Log the metrics
         completion_length = self.accelerator.gather_for_metrics(completion_mask.sum(1)).float().mean().item()
