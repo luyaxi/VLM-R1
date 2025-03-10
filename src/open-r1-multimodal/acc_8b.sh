@@ -17,9 +17,9 @@ CUDA_DEVICE_MAX_CONNECTIONS=1 UCX_NET_DEVICES=bond0 GLOO_SOCKET_IFNAME=bond0 NCC
     --max_completion_length 128 \
     --num_generations 4 \
     --per_device_train_batch_size 1 \
-    --gradient_accumulation_steps 8 \
+    --gradient_accumulation_steps 16 \
     --logging_steps 1 \
-    --learning_rate 5e-6 \
+    --learning_rate 1e-6 \
     --bf16 \
     --beta 0.0 \
     --data_seed 42 \
