@@ -509,6 +509,7 @@ class MiniCPMVGRPOTrainer(Trainer):
                 do_sample = True,
                 top_p = 0.98,
                 temperature = 1,
+                # temperature = 0.1,
                 repetition_penalty = 1.2,
                 # num_beams = self.num_generations,
                 # num_beam_groups = self.num_generations,

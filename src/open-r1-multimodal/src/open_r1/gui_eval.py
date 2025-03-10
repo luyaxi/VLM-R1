@@ -16,7 +16,7 @@ SCHEMA = {
     "type": "object",
     "description": "可用的动作和参数",
     "additionalProperties": False,
-    # "required": ["thought"],
+    "required": ["thought"],
     "properties": {
         "thought": {
             "type": "string",
@@ -249,7 +249,7 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
                         sub_score = calculate_dist_score(action[k], solution[k], reso, bbox[1])
                     else:
                         print(f"Invalid to for direction {solution[k]}: ", action[k])
-                        sub_score = 0.0
+                        sub_score = -1
                     
                 else:
                     if isinstance(action[k],list):
@@ -300,6 +300,39 @@ def action_args_check(completions, solution: list[dict], resolution, bboxs,**kwa
 
 
 def calculate_dist_score(pred_loc: list[list[int,int]], gt_loc: list[int,int], res: tuple[int,int], bbox: list[int]):    
+    
+    # x_ratio = pred_loc[0]
+    # y_ratio = pred_loc[1]
+    
+    # x_ratio = x_ratio / 1000
+    # y_ratio = y_ratio / 1000
+    # est_x = int(res[0] * x_ratio)
+    # est_y = int(res[1] * y_ratio)
+    
+    # if bbox is None or not isinstance(bbox, list):
+    #     print("No bbox provided.")
+    #     gt_x = gt_loc[0]
+    #     gt_y = gt_loc[1]
+    #     delta_x = abs(gt_x - x_ratio)
+    #     delta_y = abs(gt_y - y_ratio)
+    #     max_delta = max(delta_x,delta_y)
+    #     dist_score = -max_delta / 1000
+    #     return dist_score
+    
+    # left_top = bbox[0]
+    # right_bottom = bbox[1]
+    # if left_top[0] <= est_x <= right_bottom[0] and left_top[1] <= est_y <= right_bottom[1]:
+    #     dist_score = -0.1
+    #     # remain 0.1 for centering
+    #     max_delta = max(abs(est_x - (left_top[0] + right_bottom[0]) / 2), abs(est_y - (left_top[1] + right_bottom[1]) / 2))
+    #     dist_score += 0.1 * ((1 - max_delta / 1000)**3)
+    # else:
+    #     dist_score = -1.0
+    #     print("Point out of bbox: ", est_x, est_y, " Bbox: ", left_top, right_bottom)
+    
+    # return dist_score
+    
+    
     left = min(pred_loc[0][0], pred_loc[1][0])
     top = min(pred_loc[0][1], pred_loc[1][1])
     right = max(pred_loc[0][0], pred_loc[1][0])
@@ -314,37 +347,19 @@ def calculate_dist_score(pred_loc: list[list[int,int]], gt_loc: list[int,int], r
         print("Invalid prediction box: ", pred_left_top, pred_right_bottom)
         return -1.0
     
-    if bbox is None or not isinstance(bbox, list):
-        dist_score = 0.0
-        print("No bbox provided.")
-        gt_x = gt_loc[0]
-        gt_y = gt_loc[1]
-        x_ratio = (left + right) / 2000
-        y_ratio = (top + bottom) / 2000
-        delta_x = abs(gt_x - x_ratio)
-        delta_y = abs(gt_y - y_ratio)
-        max_delta = max(delta_x,delta_y)
-        dist_score = - max_delta / 1000
-        return dist_score
-    
-    # x_ratio = x_ratio / 1000
-    # y_ratio = y_ratio / 1000
-    # est_x = int(res[0] * x_ratio)
-    # est_y = int(res[1] * y_ratio)
-    # left_top = bbox[0]
-    # right_bottom = bbox[1]
-    # if left_top[0] <= est_x <= right_bottom[0] and left_top[1] <= est_y <= right_bottom[1]:
-    #     dist_score = 0.9
-    #     # remain 0.1 for centering
-    #     max_delta = max(abs(est_x - (left_top[0] + right_bottom[0]) / 2), abs(est_y - (left_top[1] + right_bottom[1]) / 2))
-    #     dist_score += 0.1 * ((1 - max_delta / 1000)**3)
-    # else:
-    #     dist_score = 0.0
-    #     print("Point out of bbox: ", est_x, est_y, " Bbox: ", left_top, right_bottom)
-    
     # calculate CIoU score
     left_top = bbox[0]
     right_bottom = bbox[1]
+
+    if bbox is None or not isinstance(bbox, list):
+        print("No bbox provided.")
+        gt_x = gt_loc[0]
+        gt_y = gt_loc[1]
+        delta_x = abs(gt_x - (left + right) / 2)
+        delta_y = abs(gt_y - (top + bottom) / 2)
+        max_delta = max(delta_x,delta_y)
+        dist_score = - max_delta / 1000
+        return dist_score
     
     
     # Intersection area
