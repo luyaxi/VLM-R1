@@ -87,7 +87,7 @@ SCHEMA = {
         }
     },
     "$defs": {
-        "Coordinate": {
+        "Location": {
             "type": "array",
             "description": "坐标为相对于屏幕左上角位原点的相对位置，并且按照宽高比例缩放到0～1000，数组第一个元素为横坐标x，第二个元素为纵坐标y",
             "items": {
@@ -98,15 +98,15 @@ SCHEMA = {
             "minItems": 2,
             "maxItems": 2
         },
-        "Location": {
-            "type": "array",
-            "description": "由两个坐标组成的数组，表示一个矩形区域。两个坐标的连线不平行于X轴或Y轴。",
-            "items": {
-                "$ref": "#/$defs/Coordinate"
-            },
-            "minItems": 2,
-            "maxItems": 2
-        }
+        # "Location": {
+        #     "type": "array",
+        #     "description": "由两个坐标组成的数组，表示一个矩形区域。两个坐标的连线不平行于X轴或Y轴。",
+        #     "items": {
+        #         "$ref": "#/$defs/Coordinate"
+        #     },
+        #     "minItems": 2,
+        #     "maxItems": 2
+        # }
     }
 }
 
@@ -301,36 +301,39 @@ def action_args_check(completions, solution: list[dict], resolution, bboxs,**kwa
 
 def calculate_dist_score(pred_loc: list[list[int,int]], gt_loc: list[int,int], res: tuple[int,int], bbox: list[int]):    
     
-    # x_ratio = pred_loc[0]
-    # y_ratio = pred_loc[1]
+    x_ratio = pred_loc[0]
+    y_ratio = pred_loc[1]
     
-    # x_ratio = x_ratio / 1000
-    # y_ratio = y_ratio / 1000
-    # est_x = int(res[0] * x_ratio)
-    # est_y = int(res[1] * y_ratio)
+    if bbox is None or not isinstance(bbox, list):
+        print("No bbox provided.")
+        gt_x = gt_loc[0]
+        gt_y = gt_loc[1]
+        delta_x = abs(gt_x - x_ratio)
+        delta_y = abs(gt_y - y_ratio)
+        max_delta = max(delta_x,delta_y)
+        dist_score = - max_delta / 1000
+        return dist_score
     
-    # if bbox is None or not isinstance(bbox, list):
-    #     print("No bbox provided.")
-    #     gt_x = gt_loc[0]
-    #     gt_y = gt_loc[1]
-    #     delta_x = abs(gt_x - x_ratio)
-    #     delta_y = abs(gt_y - y_ratio)
-    #     max_delta = max(delta_x,delta_y)
-    #     dist_score = -max_delta / 1000
-    #     return dist_score
+    left_top = bbox[0]
+    right_bottom = bbox[1]
+    est_x = int(res[0] * x_ratio/1000)
+    est_y = int(res[1] * y_ratio/1000)
     
-    # left_top = bbox[0]
-    # right_bottom = bbox[1]
-    # if left_top[0] <= est_x <= right_bottom[0] and left_top[1] <= est_y <= right_bottom[1]:
-    #     dist_score = -0.1
-    #     # remain 0.1 for centering
-    #     max_delta = max(abs(est_x - (left_top[0] + right_bottom[0]) / 2), abs(est_y - (left_top[1] + right_bottom[1]) / 2))
-    #     dist_score += 0.1 * ((1 - max_delta / 1000)**3)
-    # else:
-    #     dist_score = -1.0
-    #     print("Point out of bbox: ", est_x, est_y, " Bbox: ", left_top, right_bottom)
+    if left_top[0] <= est_x <= right_bottom[0] and left_top[1] <= est_y <= right_bottom[1]:
+        dist_score = 0.9
+        # remain 0.1 for centering
+        max_delta = max(abs(est_x - (left_top[0] + right_bottom[0]) / 2), abs(est_y - (left_top[1] + right_bottom[1]) / 2))
+        dist_score += 0.1 * ((1 - max_delta / 1000)**3)
+    else:
+        print("Point out of bbox: ", est_x, est_y, " Bbox: ", left_top, right_bottom)
+        gt_x = gt_loc[0]
+        gt_y = gt_loc[1]
+        delta_x = abs(gt_x - x_ratio)
+        delta_y = abs(gt_y - y_ratio)
+        max_delta = max(delta_x,delta_y)
+        dist_score = - max_delta / 1000
     
-    # return dist_score
+    return dist_score
     
     
     left = min(pred_loc[0][0], pred_loc[1][0])
@@ -347,10 +350,6 @@ def calculate_dist_score(pred_loc: list[list[int,int]], gt_loc: list[int,int], r
         print("Invalid prediction box: ", pred_left_top, pred_right_bottom)
         return -1.0
     
-    # calculate CIoU score
-    left_top = bbox[0]
-    right_bottom = bbox[1]
-
     if bbox is None or not isinstance(bbox, list):
         print("No bbox provided.")
         gt_x = gt_loc[0]
@@ -360,7 +359,10 @@ def calculate_dist_score(pred_loc: list[list[int,int]], gt_loc: list[int,int], r
         max_delta = max(delta_x,delta_y)
         dist_score = - max_delta / 1000
         return dist_score
-    
+
+    # calculate CIoU score
+    left_top = bbox[0]
+    right_bottom = bbox[1]
     
     # Intersection area
     x1 = max(left_top[0], pred_left_top[0])
