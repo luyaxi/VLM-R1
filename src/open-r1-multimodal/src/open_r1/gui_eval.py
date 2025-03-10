@@ -62,7 +62,7 @@ SCHEMA = {
         },
         "TYPE": {
             "type": "string",
-            "description": "输入文本"
+            "description": "向设备键入文本",
         },
         # "DEEP_LINK": {
         #     "type": "null",
@@ -74,7 +74,7 @@ SCHEMA = {
         # },
         "STATUS": {
             "type": "string",
-            # "description": "当前任务的状态。特殊情况：satisfied，无需操作；impossible，任务无法完成；interrupt，任务中断；need_feedback，需要用户反馈；",
+            "description": "当任务结束时设置为finish",
             "enum": [
                 "continue",
                 "finish",
@@ -146,19 +146,19 @@ SYSTEM_PROMPT = f"""# Role
 
 
 def load_and_validate_action(res:str,):
-    # action_str = re.search(r'```json(.*?)```', res, re.DOTALL)
-    # if action_str:
-    #     action_str = action_str.group(1).strip()
-    # else:
-    #     action_str = res
-    # action = json5.loads(action_str,allow_duplicate_keys=False)
+    action_str = re.search(r'```json(.*?)```', res, re.DOTALL)
+    if action_str:
+        action_str = action_str.group(1).strip()
+    else:
+        action_str = res
+    action = json5.loads(action_str,allow_duplicate_keys=False)
     # if isinstance(res, str):
     #     action_str = res
     #     action = json5.loads(action_str,allow_duplicate_keys=False)
     # else:
     #     action = res
     
-    action = json5.loads(res,allow_duplicate_keys=False)
+    # action = json5.loads(res,allow_duplicate_keys=False)
     jsonschema.validate(action, SCHEMA)
     return action
 
@@ -167,9 +167,11 @@ global_executor = ProcessPoolExecutor(max_workers=8)
 def _action_schema_check(res:str):
     try:
         action:dict = load_and_validate_action(res)
+        if "```json" in res:
+            return 0.7
         return 1.0
     except jsonschema.ValidationError as e:
-        return 0.5
+        return 0.3
     except Exception as e:
         return 0.0
 
@@ -179,7 +181,7 @@ def action_schema_check(completions, **kwargs):
     scores = []
     for future in futures:
         try:
-            scores.append(future.result(timeout=5))
+            scores.append(future.result(timeout=5)*0.3)
         except TimeoutError as e:
             print("Timeout while checking schema.")
             scores.append(0.0)
@@ -197,12 +199,17 @@ def _action_type_check(res:str, solution: dict):
             solution_keys.remove("thought")
         
         if len(action_keys) == 0:
-            return -1.0
+            return -0.5
         
         jaccard_index = len(action_keys & solution_keys) / len(solution_keys.union(action_keys))
         if jaccard_index < 1:
             print("Mismatched keys in action, Expected: ", solution_keys, " Got: ", action_keys)
+            
+        if "```json" in res:
+            return jaccard_index * 0.95
         return jaccard_index
+    except jsonschema.ValidationError as e:
+        return -0.5
     except Exception as e:
         return -1
     
@@ -474,9 +481,9 @@ class GUIRFTDataset(Dataset):
         conv.append({"role":"system","content":random.choice(SYSTEM_PROMPTS)})
         # conv.append({"role": "user", "content": "帮助我完成给定任务，请直接输出可解析的json格式操作指令"})
         # conv.append({"role": "assistant", "content": '// 用户请求帮助，但未提供具体任务\n{"thought":"好的，请提供具体任务描述"}'})
-        conv.append({"role":"user","content":[
+        conv.append({"role": "user", "content": [
             img, 
-            f"{user_query}"
+            f"{user_query}\n请将思考过程写在注释中并直接输出可解析的JSON格式操作指令"
         ]})
         
         return {
@@ -739,13 +746,16 @@ f"""⚙️ 机器角色：界面操作编译器
 
 
 if __name__=="__main__":
-    dataset = GUIRFTDataset("/data3/workhome/luyaxi/VCPM-R1/GUIData/bboxdata/tasks.jsonl",1120)
-    from PIL import ImageDraw
-    item = dataset[0]
-    img = item["image"]
-    W,H = item["resolution"]
-    draw = ImageDraw.Draw(img)
-    print(item["bboxs"])
-    print(item["resolution"])
-    draw.rectangle([item["bboxs"][0][0][0]/W*img.size[0], item["bboxs"][0][0][1]/H*img.size[1] , item["bboxs"][0][1][0]/W*img.size[0], item["bboxs"][0][1][1]/H*img.size[1]],outline="red",width=3)
-    img.save("test.png")
+    import yaml
+    # print(yaml.dump(SCHEMA, allow_unicode=True, default_flow_style=True))
+    print(compact_json_dumps(SCHEMA))
+    # dataset = GUIRFTDataset("/data3/workhome/luyaxi/VCPM-R1/GUIData/bboxdata/tasks.jsonl",1120)
+    # from PIL import ImageDraw
+    # item = dataset[0]
+    # img = item["image"]
+    # W,H = item["resolution"]
+    # draw = ImageDraw.Draw(img)
+    # print(item["bboxs"])
+    # print(item["resolution"])
+    # draw.rectangle([item["bboxs"][0][0][0]/W*img.size[0], item["bboxs"][0][0][1]/H*img.size[1] , item["bboxs"][0][1][0]/W*img.size[0], item["bboxs"][0][1][1]/H*img.size[1]],outline="red",width=3)
+    # img.save("test.png")
