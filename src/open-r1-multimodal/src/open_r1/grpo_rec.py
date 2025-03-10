@@ -67,6 +67,10 @@ class GRPOScriptArguments(ScriptArguments):
         default=None,
         metadata={"help": "Root directory of the image"},
     )
+    max_line_res: Optional[int] = field(
+        default=None,
+        metadata={"help": "Maximum number of pixels for the longest line of the image"},
+    )
     
 from gui_eval import action_schema_check,action_type_check, action_args_check, GUIRFTDataset
 reward_funcs_registry = {
@@ -84,7 +88,7 @@ def main(script_args, training_args, model_args):
     print("reward_funcs:", reward_funcs)
 
     # Load the dataset
-    dataset = GUIRFTDataset(script_args.dataset_name, script_args)
+    dataset = GUIRFTDataset(script_args.dataset_name, script_args.max_line_res,script_args)
 
     # Initialize the GRPO trainer
     trainer = MiniCPMVGRPOTrainer(

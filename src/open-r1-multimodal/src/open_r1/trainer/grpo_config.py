@@ -153,12 +153,20 @@ class GRPOConfig(TrainingArguments):
         },
     )
     
-    mini_num_generations: Optional[int] = field(
-        default=1,
+    tune_vision: Optional[bool] = field(
+        default=True,
         metadata={
-            "help": "Number of generations to sample for the mini-batch. The global generation batch size (num_generations * num_processes"
-            " * per_device_batch_size) must be divisible by this value."
-        }
+            "help": "Whether to fine-tune the vision model during training. If set to `False`, the vision model is "
+            "frozen."
+        },
+    )
+    
+    gather_deepspeed3_params: Optional[bool] = field(
+        default=True,
+        metadata={
+            "help": "Whether to gather the DeepSpeed ZeRO-3 parameters for generation. If set to `False`, the policy "
+            "model weights are not gathered for generation, which may lead to slower generation."
+        },
     )
     
     temperature: Optional[float] = field(

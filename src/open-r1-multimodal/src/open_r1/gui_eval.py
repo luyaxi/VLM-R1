@@ -18,30 +18,30 @@ SCHEMA = {
     "additionalProperties": False,
     # "required": ["thought"],
     "properties": {
-        "thought": {
-            "type": "string",
-            "description": "对当前任务的思考，用于描述当前操作的目的"
-        },
+        # "thought": {
+        #     "type": "string",
+        #     "description": "对当前任务的思考，用于描述当前操作的目的"
+        # },
         "POINT": {
             "description": "点击屏幕上的指定位置",
             "$ref": "#/$defs/Location"
         },
         "to": {
-            "description": "移动，组合手势参数",
+            "description": "组合手势参数",
             "oneOf": [
-            {
-                "enum": [
-                "up",
-                "down",
-                "left",
-                "right"
-                ],
-                "description": "结合POINT操作，实现向上下左右滑动"
-            },
-            {
-                "$ref": "#/$defs/Location",
-                "description": "移动到某个位置"
-            }
+                {
+                    "enum": [
+                    "up",
+                    "down",
+                    "left",
+                    "right"
+                    ],
+                    "description": "结合POINT操作，实现向上下左右滑动"
+                },
+                {
+                    "$ref": "#/$defs/Location",
+                    "description": "移向到某个位置"
+                }
             ]
         },
         "duration": {
@@ -52,29 +52,29 @@ SCHEMA = {
         },
         "PRESS": {
             "type": "string",
-            "description": "触发特殊按键，HOME为回到主页按钮，BACK为返回按钮，ENTER为回撤按钮，APPSELECT为查看已打开APP列表按钮",
+            "description": "触发特殊按键",
             "enum": [
-            "HOME",
-            "BACK",
-            "ENTER",
-            "APPSELECT"
+                "HOME",
+                "BACK",
+                "ENTER",
+                "APPSELECT"
             ]
         },
         "TYPE": {
             "type": "string",
             "description": "输入文本"
         },
-        "DEEP_LINK": {
-            "type": "null",
-            "description": "跳转到最近打开的APP"
-        },
-        "CLEAR": {
-            "type": "null",
-            "description": "清空输入框的内容"
-        },
+        # "DEEP_LINK": {
+        #     "type": "null",
+        #     "description": "跳转到最近打开的APP"
+        # },
+        # "CLEAR": {
+        #     "type": "null",
+        #     "description": "清空输入框的内容"
+        # },
         "STATUS": {
             "type": "string",
-            "description": "当前任务的状态。特殊情况：satisfied，无需操作；impossible，任务无法完成；interrupt，任务中断；need_feedback，需要用户反馈；",
+            # "description": "当前任务的状态。特殊情况：satisfied，无需操作；impossible，任务无法完成；interrupt，任务中断；need_feedback，需要用户反馈；",
             "enum": [
                 "continue",
                 "finish",
@@ -421,7 +421,7 @@ def calculate_dist_score(pred_loc: list[list[int,int]], gt_loc: list[int,int], r
 
 
 class GUIRFTDataset(Dataset):
-    def __init__(self, jsonl_file_path: str, *args, **kwargs):
+    def __init__(self, jsonl_file_path: str, max_line_res: int|None = None, *args, **kwargs):
         super().__init__()
         self.data = []
         self.jsonl_file_path = jsonl_file_path
@@ -433,6 +433,7 @@ class GUIRFTDataset(Dataset):
                     print("Error while loading line.")
                     continue
         self.image_root = os.path.dirname(os.path.dirname(jsonl_file_path))
+        self.max_line_res = max_line_res
 
     def __len__(self):
         return len(self.data)
@@ -449,14 +450,15 @@ class GUIRFTDataset(Dataset):
             resolution = origin_img.size
             w,h = resolution
             # resize the max height and width to 1000
-            max_line = 1024
-            if h > max_line:
-                w = int(w * max_line / h)
-                h = max_line
-            if w > max_line:
-                h = int(h * max_line / w)
-                w = max_line
-            img = origin_img.resize((w,h),resample=Image.Resampling.BILINEAR)
+            if self.max_line_res is not None:
+                max_line = self.max_line_res
+                if h > max_line:
+                    w = int(w * max_line / h)
+                    h = max_line
+                if w > max_line:
+                    h = int(h * max_line / w)
+                    w = max_line
+            img = origin_img.resize((w,h),resample=Image.Resampling.LANCZOS)
             
             break
         
@@ -737,12 +739,13 @@ f"""⚙️ 机器角色：界面操作编译器
 
 
 if __name__=="__main__":
-    dataset = GUIRFTDataset("/data3/workhome/luyaxi/VCPM-R1/GUIData/bboxdata/tasks.jsonl")
+    dataset = GUIRFTDataset("/data3/workhome/luyaxi/VCPM-R1/GUIData/bboxdata/tasks.jsonl",1120)
     from PIL import ImageDraw
     item = dataset[0]
-    img = item["fullres_image"]
+    img = item["image"]
+    W,H = item["resolution"]
     draw = ImageDraw.Draw(img)
     print(item["bboxs"])
     print(item["resolution"])
-    draw.rectangle(item["bboxs"][0][0] + item["bboxs"][0][1],outline="red",width=3)
+    draw.rectangle([item["bboxs"][0][0][0]/W*img.size[0], item["bboxs"][0][0][1]/H*img.size[1] , item["bboxs"][0][1][0]/W*img.size[0], item["bboxs"][0][1][1]/H*img.size[1]],outline="red",width=3)
     img.save("test.png")

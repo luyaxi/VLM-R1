@@ -51,6 +51,7 @@ from PIL import Image
 
 import copy
 from torch.utils.data import Sampler
+from .grpo_config import GRPOConfig as CustomGRPOConfig
 
 if is_peft_available():
     from peft import PeftConfig, get_peft_model
@@ -201,7 +202,7 @@ class MiniCPMVGRPOTrainer(Trainer):
         self,
         model: Union[str, PreTrainedModel],
         reward_funcs: Union[RewardFunc, list[RewardFunc]],
-        args: GRPOConfig = None,
+        args: GRPOConfig | CustomGRPOConfig = None,
         train_dataset: Optional[Union[Dataset, IterableDataset]] = None,
         eval_dataset: Optional[Union[Dataset, IterableDataset, dict[str, Union[Dataset, IterableDataset]]]] = None,
         processing_class: Optional[PreTrainedTokenizerBase] = None,
@@ -259,6 +260,8 @@ class MiniCPMVGRPOTrainer(Trainer):
 
         if peft_config is not None:
             model = get_peft_model(model, peft_config)
+        if not args.tune_vision:
+            model.vpm.requires_grad_(False)
 
         # Enable gradient checkpointing if requested
         if args.gradient_checkpointing:
@@ -334,13 +337,7 @@ class MiniCPMVGRPOTrainer(Trainer):
         self.max_prompt_length = args.max_prompt_length
         self.max_completion_length = args.max_completion_length  # = |o_i| in the GRPO paper
         self.num_generations = args.num_generations  # = G in the GRPO paper
-        # self.generation_config = GenerationConfig(
-        #     max_new_tokens=self.max_completion_length,
-        #     do_sample=True,  
-        #     temperature=1, # HACK
-        #     num_return_sequences=self.num_generations,
-        #     pad_token_id=pad_token_id,
-        # )
+        self.gather_deepspeed3_params = args.gather_deepspeed3_params
         self.beta = args.beta
         self.epsilon = args.epsilon
 
@@ -500,7 +497,7 @@ class MiniCPMVGRPOTrainer(Trainer):
         prompt_ids, prompt_mask = prompt_inputs["input_ids"], prompt_inputs["attention_mask"]
 
         # Generate completions
-        with unwrap_model_for_generation(model, self.accelerator) as unwrapped_model:
+        with unwrap_model_for_generation(model, self.accelerator, gather_deepspeed3_params=self.gather_deepspeed3_params) as unwrapped_model:
             # prompt_completion_ids = unwrapped_model.generate(**prompt_inputs, generation_config=self.generation_config)
             
             completion_ids = unwrapped_model.generate(
@@ -651,6 +648,8 @@ class MiniCPMVGRPOTrainer(Trainer):
         # Log the metrics
         completion_length = self.accelerator.gather_for_metrics(completion_mask.sum(1)).float().mean().item()
         self._metrics["completion_length"].append(completion_length)
+        full_length = self.accelerator.gather_for_metrics(attention_mask.sum(1)).float().mean().item()
+        self._metrics["full_length"].append(full_length)
 
         reward_per_func = self.accelerator.gather_for_metrics(rewards_per_func).mean(0)
         for i, reward_func in enumerate(self.reward_funcs):
