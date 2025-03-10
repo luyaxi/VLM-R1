@@ -87,26 +87,27 @@ SCHEMA = {
         }
     },
     "$defs": {
-        "Location": {
+        "Coordinate": {
             "type": "array",
-            "description": "坐标为相对于屏幕左上角位原点的相对位置，并且按照宽高比例缩放到0～1000，数组第一个元素为横坐标x，第二个元素为纵坐标y",
+            # "description": "坐标为相对于屏幕左上角位原点的相对位置，并且按照宽高比例缩放到0～1000，数组第一个元素为横坐标x，第二个元素为纵坐标y",
+            "description": "坐标为相对于屏幕左上角位原点的绝对像素数，数组第一个元素为横坐标x，第二个元素为纵坐标y",
             "items": {
                 "type": "integer",
                 "minimum": 0,
-                "maximum": 1000
+                # "maximum": 1000
             },
             "minItems": 2,
             "maxItems": 2
         },
-        # "Location": {
-        #     "type": "array",
-        #     "description": "由两个坐标组成的数组，表示一个矩形区域。两个坐标的连线不平行于X轴或Y轴。",
-        #     "items": {
-        #         "$ref": "#/$defs/Coordinate"
-        #     },
-        #     "minItems": 2,
-        #     "maxItems": 2
-        # }
+        "Location": {
+            "type": "array",
+            "description": "由两个坐标组成的数组，表示一个矩形区域。两个坐标的连线不平行于X轴或Y轴。",
+            "items": {
+                "$ref": "#/$defs/Coordinate"
+            },
+            "minItems": 2,
+            "maxItems": 2
+        }
     }
 }
 
@@ -312,51 +313,91 @@ def action_args_check(completions, solution: list[dict], resolution, bboxs,**kwa
 
 
 def calculate_dist_score(pred_loc: list[list[int,int]], gt_loc: list[int,int], res: tuple[int,int], bbox: list[int]):    
+    # 绝对坐标
+    # x_ratio = pred_loc[0]
+    # y_ratio = pred_loc[1]
     
-    x_ratio = pred_loc[0]
-    y_ratio = pred_loc[1]
+    # if bbox is None or not isinstance(bbox, list):
+    #     print("No bbox provided.")
+    #     gt_x = gt_loc[0]
+    #     gt_y = gt_loc[1]
+    #     delta_x = abs(gt_x - x_ratio)
+    #     delta_y = abs(gt_y - y_ratio)
+    #     max_delta = max(delta_x,delta_y)
+    #     dist_score = - max_delta / 1000
+    #     return dist_score
     
-    if bbox is None or not isinstance(bbox, list):
-        print("No bbox provided.")
-        gt_x = gt_loc[0]
-        gt_y = gt_loc[1]
-        delta_x = abs(gt_x - x_ratio)
-        delta_y = abs(gt_y - y_ratio)
-        max_delta = max(delta_x,delta_y)
-        dist_score = - max_delta / 1000
-        return dist_score
+    # left_top = bbox[0]
+    # right_bottom = bbox[1]
+    # est_x = int(res[0] * x_ratio/1000)
+    # est_y = int(res[1] * y_ratio/1000)
     
-    left_top = bbox[0]
-    right_bottom = bbox[1]
-    est_x = int(res[0] * x_ratio/1000)
-    est_y = int(res[1] * y_ratio/1000)
+    # if left_top[0] <= est_x <= right_bottom[0] and left_top[1] <= est_y <= right_bottom[1]:
+    #     dist_score = 0.9
+    #     # remain 0.1 for centering
+    #     max_delta = max(abs(est_x - (left_top[0] + right_bottom[0]) / 2), abs(est_y - (left_top[1] + right_bottom[1]) / 2))
+    #     dist_score += 0.1 * ((1 - max_delta / 1000)**3)
+    # else:
+    #     print("Point out of bbox: ", est_x, est_y, " Bbox: ", left_top, right_bottom)
+    #     gt_x = gt_loc[0]
+    #     gt_y = gt_loc[1]
+    #     delta_x = abs(gt_x - x_ratio)
+    #     delta_y = abs(gt_y - y_ratio)
+    #     max_delta = max(delta_x,delta_y)
+    #     dist_score = - max_delta / 1000
     
-    if left_top[0] <= est_x <= right_bottom[0] and left_top[1] <= est_y <= right_bottom[1]:
-        dist_score = 0.9
-        # remain 0.1 for centering
-        max_delta = max(abs(est_x - (left_top[0] + right_bottom[0]) / 2), abs(est_y - (left_top[1] + right_bottom[1]) / 2))
-        dist_score += 0.1 * ((1 - max_delta / 1000)**3)
-    else:
-        print("Point out of bbox: ", est_x, est_y, " Bbox: ", left_top, right_bottom)
-        gt_x = gt_loc[0]
-        gt_y = gt_loc[1]
-        delta_x = abs(gt_x - x_ratio)
-        delta_y = abs(gt_y - y_ratio)
-        max_delta = max(delta_x,delta_y)
-        dist_score = - max_delta / 1000
+    # return dist_score
     
-    return dist_score
+    # 相对坐标
+    # origin_res, now_res = res
+    # origin_w, origin_h = origin_res
+    # now_w, now_h = now_res
     
+    # x, y = pred_loc
+    # gt_x, gt_y = gt_loc
+    # x_ratio = x / now_w
+    # y_ratio = y / now_h
+    
+    # abs_x = int(x_ratio * origin_w)
+    # abs_y = int(y_ratio * origin_h)
+    
+    
+    # if bbox is None or not isinstance(bbox, list):
+    #     print("No bbox provided.")
+    #     delta_x = abs(gt_x/1000 - x_ratio)
+    #     delta_y = abs(gt_y/1000 - y_ratio)
+    #     max_delta = max(delta_x,delta_y)
+    #     dist_score = - max_delta
+    #     return dist_score
+
+    # left_top, right_bottom = bbox
+    # if left_top[0] <= abs_x <= right_bottom[0] and left_top[1] <= abs_y <= right_bottom[1]:
+    #     dist_score = 0.9
+    #     # remain 0.1 for centering
+    #     max_delta = max(abs(abs_x - (left_top[0] + right_bottom[0]) / 2), abs(abs_y - (left_top[1] + right_bottom[1]) / 2))
+    #     dist_score += 0.1 * ((1 - max_delta / 1000)**3)
+    # else:
+    #     print("Point out of bbox: ", abs_x, abs_y, " Bbox: ", left_top, right_bottom)
+    #     delta_x = abs(gt_x - abs_x)
+    #     delta_y = abs(gt_y - abs_y)
+    #     max_delta = max(delta_x,delta_y)
+    #     dist_score = - max_delta / 1000
+    
+    # return dist_score
+    
+    # 绝对坐标iou
     
     left = min(pred_loc[0][0], pred_loc[1][0])
     top = min(pred_loc[0][1], pred_loc[1][1])
     right = max(pred_loc[0][0], pred_loc[1][0])
     bottom = max(pred_loc[0][1], pred_loc[1][1])
     
-    W,H = res
+    origin_res, now_res = res
+    origin_w, origin_h = origin_res
+    now_w, now_h = now_res
     
-    pred_left_top = [int(left/1000*W),int(top/1000*H)]
-    pred_right_bottom = [int(right/1000*W),int(bottom/1000*H)]
+    pred_left_top = [int(left/now_w*origin_w),int(top/now_h*origin_h)]
+    pred_right_bottom = [int(right/now_w*origin_w),int(bottom/now_h*origin_h)]
     
     if pred_left_top[0] >= pred_right_bottom[0] or pred_left_top[1] >= pred_right_bottom[1]:
         print("Invalid prediction box: ", pred_left_top, pred_right_bottom)
@@ -364,17 +405,16 @@ def calculate_dist_score(pred_loc: list[list[int,int]], gt_loc: list[int,int], r
     
     if bbox is None or not isinstance(bbox, list):
         print("No bbox provided.")
-        gt_x = gt_loc[0]
-        gt_y = gt_loc[1]
-        delta_x = abs(gt_x - (left + right) / 2)
-        delta_y = abs(gt_y - (top + bottom) / 2)
+        gt_x, gt_y = gt_loc
+        
+        delta_x = abs(gt_x/1000 - (left + right) / (now_w * 2))
+        delta_y = abs(gt_y/1000 - (top + bottom) / (2 * now_h))
         max_delta = max(delta_x,delta_y)
-        dist_score = - max_delta / 1000
+        dist_score = - max_delta
         return dist_score
 
     # calculate CIoU score
-    left_top = bbox[0]
-    right_bottom = bbox[1]
+    left_top, right_bottom = bbox
     
     # Intersection area
     x1 = max(left_top[0], pred_left_top[0])
@@ -454,8 +494,7 @@ class GUIRFTDataset(Dataset):
             except:
                 print("Error while loading image: ", img_file)
                 return self[random.randint(0,len(self.data)-1)]
-            resolution = origin_img.size
-            w,h = resolution
+            w,h = origin_img.size
             # resize the max height and width to 1000
             if self.max_line_res is not None:
                 max_line = self.max_line_res
@@ -467,6 +506,7 @@ class GUIRFTDataset(Dataset):
                     w = max_line
             img = origin_img.resize((w,h),resample=Image.Resampling.LANCZOS)
             
+            resolution = (origin_img.size, img.size)
             break
         
         try:
@@ -483,7 +523,7 @@ class GUIRFTDataset(Dataset):
         # conv.append({"role": "assistant", "content": '// 用户请求帮助，但未提供具体任务\n{"thought":"好的，请提供具体任务描述"}'})
         conv.append({"role": "user", "content": [
             img, 
-            f"{user_query}\n请将思考过程写在注释中并直接输出可解析的JSON格式操作指令"
+            f"图像分辨率: {str(img.size)}\n{user_query}\n请将思考过程写在注释中并直接输出可解析的JSON格式操作指令"
         ]})
         
         return {
