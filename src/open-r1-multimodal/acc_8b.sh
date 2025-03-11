@@ -26,7 +26,7 @@ CUDA_DEVICE_MAX_CONNECTIONS=1 UCX_NET_DEVICES=bond0 GLOO_SOCKET_IFNAME=bond0 NCC
     --learning_rate 1e-6 \
     --weight_decay 0.1 \
     --adam_beta2 0.99 \
-    --lr_scheduler_type "cosine" \
+    --lr_scheduler_type "constant" \
     --tune_vision true \
     --gather_deepspeed3_params true \
     --bf16 \

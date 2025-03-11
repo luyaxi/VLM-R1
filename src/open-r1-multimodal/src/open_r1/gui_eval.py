@@ -353,13 +353,14 @@ def calculate_dist_score(pred_loc: list[list[int,int]], gt_loc: list[int,int], r
     
     # return dist_score
     
-    # 相对坐标
     origin_res, now_res = res
     origin_w, origin_h = origin_res
     now_w, now_h = now_res
     
     x, y = pred_loc
     gt_x, gt_y = gt_loc
+    gt_x_ratio = gt_x /1000
+    gt_y_ratio = gt_y /1000
     x_ratio = x / now_w
     y_ratio = y / now_h
     
@@ -372,9 +373,9 @@ def calculate_dist_score(pred_loc: list[list[int,int]], gt_loc: list[int,int], r
     
     
     if bbox is None or not isinstance(bbox, list):
-        print("No bbox provided.")
-        delta_x = abs(gt_x/1000 - x_ratio)
-        delta_y = abs(gt_y/1000 - y_ratio)
+        # print("No bbox provided.")
+        delta_x = abs(gt_x_ratio - x_ratio)
+        delta_y = abs(gt_y_ratio - y_ratio)
         max_delta = max(delta_x,delta_y)
         dist_score = - max_delta
         return dist_score
@@ -387,8 +388,8 @@ def calculate_dist_score(pred_loc: list[list[int,int]], gt_loc: list[int,int], r
         dist_score += 0.1 * ((1 - max_delta / 1000)**3)
     else:
         print("Point out of bbox: ", abs_x, abs_y, " Bbox: ", left_top, right_bottom)
-        delta_x = abs(gt_x/1000 - x_ratio)
-        delta_y = abs(gt_y/1000 - y_ratio)
+        delta_x = abs(gt_x_ratio - x_ratio)
+        delta_y = abs(gt_y_ratio - y_ratio)
         max_delta = max(delta_x,delta_y)
         dist_score = - max_delta
     
