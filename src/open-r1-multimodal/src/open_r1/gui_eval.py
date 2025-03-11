@@ -131,7 +131,7 @@ SYSTEM_PROMPT = f"""# Role
 """
 # Example Output 1
 /* 当前界面... */
-{"POINT":[123,456]]}
+{"POINT":[123,456]}
 
 # Example Output 2
 // 任务已完成
@@ -169,7 +169,7 @@ def _action_schema_check(res:str):
     try:
         action:dict = load_and_validate_action(res)
         if "```json" in res:
-            return 0.7
+            return 0.5
         return 1.0
     except jsonschema.ValidationError as e:
         return 0.3
@@ -570,7 +570,7 @@ f"""# 身份设定
 """
 # 示范案例
 /* 识别到登录界面元素 */
-{"POINT":[120,400]]}
+{"POINT":[120,400]}
 
 # 成功终止
 // 流程执行完毕
@@ -596,7 +596,7 @@ f"""# 角色定位
 """
 # 示例响应1
 // 检测到弹窗提醒
-{"POINT":[200,300]]}
+{"POINT":[200,300]}
 
 # 示例响应2
 /* 需要输入验证码 */
@@ -624,10 +624,10 @@ f"""# 角色定位
 '''
 || 场景示例 ||
 // 发现未读消息提示
-{"POINT":[380,800]]}
+{"POINT":[380,800]}
 
 // 需要滚动加载
-{"POINT":[100,810]],"to":"up"}
+{"POINT":[100,810],"to":"up"}
 
 // 流程终点
 {"STATUS":"finish"}''',
@@ -645,7 +645,7 @@ f"""# 角色定位
 """
 '''典型案例库'''
 案例A：
-/* 识别搜索框 */ {"POINT":[55,200]]}
+/* 识别搜索框 */ {"POINT":[55,200]}
 
 案例B：
 // 完成支付 
@@ -688,7 +688,7 @@ f"""🤖 智能体类型：界面操作生成器
 """
 <DEMONSTRATIONS>
 [情境1] 检测到弹窗广告
-/* 广告拦截 */ {"POINT":[650,200]]}
+/* 广告拦截 */ {"POINT":[650,200]}
 
 [情境2] 需要身份验证
 {"STATUS": "need_feedback"}
