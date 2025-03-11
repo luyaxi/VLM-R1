@@ -89,12 +89,12 @@ SCHEMA = {
     "$defs": {
         "Location": {
             "type": "array",
-            # "description": "坐标为相对于屏幕左上角位原点的相对位置，并且按照宽高比例缩放到0～1000，数组第一个元素为横坐标x，第二个元素为纵坐标y",
-            "description": "坐标为相对于屏幕左上角位原点的绝对像素数，数组第一个元素为横坐标x，第二个元素为纵坐标y",
+            "description": "坐标为相对于屏幕左上角位原点的相对位置，并且按照宽高比例缩放到0～1000，数组第一个元素为横坐标x，第二个元素为纵坐标y",
+            # "description": "坐标为相对于屏幕左上角位原点的绝对像素数，数组第一个元素为横坐标x，第二个元素为纵坐标y",
             "items": {
                 "type": "integer",
                 "minimum": 0,
-                # "maximum": 1000
+                "maximum": 1000
             },
             "minItems": 2,
             "maxItems": 2
@@ -228,7 +228,7 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
     score_penalty = 0.0
     
     if action_keys - solution_keys:
-        print("Unexpected keys in action, Expected: ", solution_keys, " Got: ", action_keys)
+        # print("Unexpected keys in action, Expected: ", solution_keys, " Got: ", action_keys)
         score_penalty += 0.1
     
     if '```json' in res:
@@ -259,7 +259,7 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
             case "TYPE":
                 similarity = difflib.SequenceMatcher(None, action[k], solution[k]).ratio()
                 sub_score = similarity
-                print("Text: ",solution[k],", Got: ", action[k],". Similarity: ", similarity)
+                # print("Text: ",solution[k],", Got: ", action[k],". Similarity: ", similarity)
                 
             case "to":
                 if isinstance(solution[k], list):
@@ -317,83 +317,80 @@ def action_args_check(completions, solution: list[dict], resolution, bboxs,**kwa
     return scores
 
 
+def calculate_manhattan_distance(x1, y1, x2, y2):
+    return abs(x1 - x2) + abs(y1 - y2)
+
 def calculate_dist_score(pred_loc: list[list[int,int]], gt_loc: list[int,int], res: tuple[int,int], bbox: list[int]):    
-    # 绝对坐标
-    # x_ratio = pred_loc[0]
-    # y_ratio = pred_loc[1]
+    x_ratio = pred_loc[0]/1000
+    y_ratio = pred_loc[1]/1000
     
-    # if bbox is None or not isinstance(bbox, list):
-    #     print("No bbox provided.")
-    #     gt_x = gt_loc[0]
-    #     gt_y = gt_loc[1]
-    #     delta_x = abs(gt_x - x_ratio)
-    #     delta_y = abs(gt_y - y_ratio)
-    #     max_delta = max(delta_x,delta_y)
-    #     dist_score = - max_delta / 1000
-    #     return dist_score
-    
-    # left_top = bbox[0]
-    # right_bottom = bbox[1]
-    # est_x = int(res[0] * x_ratio/1000)
-    # est_y = int(res[1] * y_ratio/1000)
-    
-    # if left_top[0] <= est_x <= right_bottom[0] and left_top[1] <= est_y <= right_bottom[1]:
-    #     dist_score = 0.9
-    #     # remain 0.1 for centering
-    #     max_delta = max(abs(est_x - (left_top[0] + right_bottom[0]) / 2), abs(est_y - (left_top[1] + right_bottom[1]) / 2))
-    #     dist_score += 0.1 * ((1 - max_delta / 1000)**3)
-    # else:
-    #     print("Point out of bbox: ", est_x, est_y, " Bbox: ", left_top, right_bottom)
-    #     gt_x = gt_loc[0]
-    #     gt_y = gt_loc[1]
-    #     delta_x = abs(gt_x - x_ratio)
-    #     delta_y = abs(gt_y - y_ratio)
-    #     max_delta = max(delta_x,delta_y)
-        # dist_score = - max_delta / 1000
-    
-    # return dist_score
+    gt_x, gt_y = gt_loc
+    gt_x_ratio = gt_x /1000
+    gt_y_ratio = gt_y /1000
     
     origin_res, now_res = res
     origin_w, origin_h = origin_res
     now_w, now_h = now_res
     
-    x, y = pred_loc
-    gt_x, gt_y = gt_loc
-    gt_x_ratio = gt_x /1000
-    gt_y_ratio = gt_y /1000
-    x_ratio = x / now_w
-    y_ratio = y / now_h
-    
-    if x_ratio > 1 or y_ratio > 1:
-        print("Invalid prediction coordinate: ", pred_loc)
-        return -1.0
-    
     abs_x = int(x_ratio * origin_w)
     abs_y = int(y_ratio * origin_h)
-    
+    gt_abs_x = int(gt_x_ratio * origin_w)
+    gt_abs_y = int(gt_y_ratio * origin_h)
     
     if bbox is None or not isinstance(bbox, list):
         # print("No bbox provided.")
-        delta_x = abs(gt_x_ratio - x_ratio)
-        delta_y = abs(gt_y_ratio - y_ratio)
-        max_delta = max(delta_x,delta_y)
-        dist_score = - max_delta
-        return dist_score
-
-    left_top, right_bottom = bbox
-    if left_top[0] <= abs_x <= right_bottom[0] and left_top[1] <= abs_y <= right_bottom[1]:
-        dist_score = 0.9
-        # remain 0.1 for centering
-        max_delta = max(abs(abs_x - (left_top[0] + right_bottom[0]) / 2), abs(abs_y - (left_top[1] + right_bottom[1]) / 2))
-        dist_score += 0.1 * ((1 - max_delta / 1000)**3)
+        return - calculate_manhattan_distance(x_ratio, y_ratio, gt_x_ratio, gt_y_ratio) / 2
+    
     else:
-        print("Point out of bbox: ", abs_x, abs_y, " Bbox: ", left_top, right_bottom)
-        delta_x = abs(gt_x_ratio - x_ratio)
-        delta_y = abs(gt_y_ratio - y_ratio)
-        max_delta = max(delta_x,delta_y)
-        dist_score = - max_delta
+        left_top = bbox[0]
+        right_bottom = bbox[1]
+        
+        if left_top[0] <= abs_x <= right_bottom[0] and left_top[1] <= abs_y <= right_bottom[1]:
+            dist_score = 0.9
+            # remain 0.1 for centering
+            max_delta = max(abs(abs_x - (left_top[0] + right_bottom[0]) / 2), abs(abs_y - (left_top[1] + right_bottom[1]) / 2))
+            dist_score += 0.1 * ((1 - max_delta / 1000)**3)
+        else:
+            # print(f"Point {(x_ratio,y_ratio)} {[abs_x,abs_y]} out of Bbox {[left_top, right_bottom]}, GT: {(gt_x_ratio,gt_y_ratio)} {[gt_abs_x,gt_abs_y]}")
+            dist_score = - calculate_manhattan_distance(x_ratio, y_ratio, gt_x_ratio, gt_y_ratio) / 2
     
     return dist_score
+    
+    # origin_res, now_res = res
+    # origin_w, origin_h = origin_res
+    # now_w, now_h = now_res
+    
+    # x, y = pred_loc
+    # gt_x, gt_y = gt_loc
+    # gt_x_ratio = gt_x /1000
+    # gt_y_ratio = gt_y /1000
+    # x_ratio = x / now_w
+    # y_ratio = y / now_h
+    
+    # if x_ratio > 1 or y_ratio > 1:
+    #     print("Invalid prediction coordinate: ", pred_loc)
+    #     return -1.0
+    
+    # abs_x = int(x_ratio * origin_w)
+    # abs_y = int(y_ratio * origin_h)
+    
+    
+    # if bbox is None or not isinstance(bbox, list):
+    #     # print("No bbox provided.")
+    #     dist_score = - calculate_manhattan_distance(x_ratio, y_ratio, gt_x_ratio, gt_y_ratio) / 2
+        
+    # else:
+    #     left_top, right_bottom = bbox
+    #     if left_top[0] <= abs_x <= right_bottom[0] and left_top[1] <= abs_y <= right_bottom[1]:
+    #         dist_score = 0.9
+    #         # remain 0.1 for centering
+    #         max_delta = max(abs(abs_x - (left_top[0] + right_bottom[0]) / 2), abs(abs_y - (left_top[1] + right_bottom[1]) / 2))
+    #         dist_score += 0.1 * ((1 - max_delta / 1000)**3)
+    #     else:
+    #         print(f"Point {(x_ratio,y_ratio)} {[abs_x,abs_y]} out of Bbox {[left_top, right_bottom]}, GT: {(gt_x_ratio,gt_y_ratio)} {gt_loc}")
+    #         dist_score = - calculate_manhattan_distance(x_ratio, y_ratio, gt_x_ratio, gt_y_ratio) / 2
+    
+    # return dist_score
     
     # 绝对坐标iou
     

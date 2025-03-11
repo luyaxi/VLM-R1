@@ -46,7 +46,7 @@ from trl.models import create_reference_model, prepare_deepspeed, unwrap_model_f
 from trl.trainer.grpo_config import GRPOConfig
 from trl.trainer.utils import generate_model_card, get_comet_experiment_url
 
-from accelerate.utils import is_peft_model
+from accelerate.utils import is_peft_model, set_seed
 from PIL import Image
 
 import copy
@@ -343,10 +343,10 @@ class MiniCPMVGRPOTrainer(Trainer):
 
         # Multi-step
         self.num_iterations = args.num_iterations  # = 𝜇 in the GRPO paper
+        # if self.num_iterations != 1:
+        #     print("Warning: Multi-step optimization is not supported.")
         # Tracks the number of iterations (forward + backward passes), including those within a gradient accumulation cycle
         self._step = 0
-        # Buffer the batch to reuse generated outputs across multiple updates
-        self._buffered_inputs = [None] * args.gradient_accumulation_steps
 
         # The trainer estimates the number of FLOPs (floating-point operations) using the number of elements in the
         # input tensor associated with the key "input_ids". However, in GRPO, the sampled data does not include the
@@ -371,6 +371,30 @@ class MiniCPMVGRPOTrainer(Trainer):
             optimizers=optimizers,
         )
         self.processing_class = processing_class
+        # Check if the per_device_train/eval_batch_size * num processes can be divided by the number of generations
+        num_processes = self.accelerator.num_processes
+        global_batch_size = args.per_device_train_batch_size * num_processes
+        possible_values = [n_gen for n_gen in range(2, global_batch_size + 1) if (global_batch_size) % n_gen == 0]
+        if self.num_generations not in possible_values:
+            raise ValueError(
+                f"The global train batch size ({num_processes} x {args.per_device_train_batch_size}) must be evenly "
+                f"divisible by the number of generations per prompt ({self.num_generations}). Given the current train "
+                f"batch size, the valid values for the number of generations are: {possible_values}."
+            )
+        if self.args.eval_strategy != "no":
+            global_batch_size = args.per_device_eval_batch_size * num_processes
+            possible_values = [n_gen for n_gen in range(2, global_batch_size + 1) if (global_batch_size) % n_gen == 0]
+            if self.num_generations not in possible_values:
+                raise ValueError(
+                    f"The global eval batch size ({num_processes} x {args.per_device_eval_batch_size}) must be evenly "
+                    f"divisible by the number of generations per prompt ({self.num_generations}). Given the current "
+                    f"eval batch size, the valid values for the number of generations are: {possible_values}."
+                )
+
+        # Ensure each process receives a unique seed to prevent duplicate completions when generating with
+        # transformers if num_generations exceeds per_device_train_batch_size. We could skip it if we use vLLM, but
+        # it's safer to set it in all cases.
+        set_seed(args.seed, device_specific=True)
 
         # Gradient accumulation requires scaled loss. Normally, loss scaling in the parent class depends on whether the
         # model accepts loss-related kwargs. Since we compute our own loss, this check is irrelevant. We set
@@ -511,7 +535,7 @@ class MiniCPMVGRPOTrainer(Trainer):
                 # num_beams = self.num_generations,
                 # num_beam_groups = self.num_generations,
                 # diversity_penalty=3.0,
-                num_return_sequences = self.num_generations,
+                # num_return_sequences = self.num_generations,
                 max_new_tokens = self.max_completion_length,
                 # return_dict_in_generate=True,
                 # output_logits = True,
@@ -525,13 +549,12 @@ class MiniCPMVGRPOTrainer(Trainer):
                 # print(completion_ids[0])
 
             # print(f"Generated {len(completion_ids)} completions.")
-            prompt_completion_ids = torch.cat([prompt_ids.repeat_interleave(self.num_generations, dim=0), completion_ids], dim=-1)
-
+            # prompt_completion_ids = torch.cat([prompt_ids.repeat_interleave(self.num_generations, dim=0), completion_ids], dim=-1)
             
             prompt_length = prompt_ids.size(1)
             prompt_ids = prompt_ids
             completion_ids = completion_ids
-            prompt_mask = prompt_mask.repeat_interleave(self.num_generations, dim=0)
+            # prompt_mask = prompt_mask.repeat_interleave(self.num_generations, dim=0)
 
         # print("Unwrapping model for generation")
         # Mask everything after the first EOS token
@@ -545,61 +568,28 @@ class MiniCPMVGRPOTrainer(Trainer):
         completion_mask = (sequence_indices <= eos_idx.unsqueeze(1)).int()
 
         # Concatenate prompt_mask with completion_mask for logit computation
-        attention_mask = torch.cat([prompt_mask, completion_mask], dim=1)  # (B*G, P+C)
-        # pixel_values = prompt_inputs["pixel_values"].repeat(self.num_generations, 1)
-        # image_grid_thw = prompt_inputs["image_grid_thw"].repeat_interleave(self.num_generations, dim=0)
-
-        # print(prompt_inputs.keys())
-        prompt_inputs["input_ids"] = prompt_completion_ids
+        attention_mask = torch.cat([prompt_mask, completion_mask], dim=1)  # (B, P+C)
+        prompt_inputs["input_ids"] = torch.cat([prompt_ids,completion_ids],dim=-1)
         prompt_inputs["attention_mask"] = attention_mask
-        prompt_inputs["image_bound"] = prompt_inputs["image_bound"]*self.num_generations
-        prompt_inputs["pixel_values"] = prompt_inputs["pixel_values"]*self.num_generations
-        prompt_inputs["tgt_sizes"] = prompt_inputs["tgt_sizes"]*self.num_generations
-        # print(prompt_inputs["pixel_values"].shape)
 
         with torch.no_grad():
-            # When using num_iterations == 1, old_per_token_logps == per_token_logps, so we can skip its
-            # computation here, and use per_token_logps.detach() instead.
-            if self.num_iterations > 1:
-                # old_per_token_logps = self._get_per_token_logps(
-                    # model, prompt_completion_ids, attention_mask,
-                    # pixel_values, image_grid_thw
-                # )
-                old_per_token_logps = self._get_vlm_per_token_logps(model, prompt_inputs)
-                old_per_token_logps = old_per_token_logps[:, prompt_length - 1:]
-            else:
-                old_per_token_logps = None
+            old_per_token_logps = None
 
             if self.beta == 0.0:
                 ref_per_token_logps = None
             elif self.ref_model is not None:
-                # ref_per_token_logps = self._get_per_token_logps(
-                #     self.ref_model, prompt_completion_ids, attention_mask, 
-                #     # pixel_values, image_grid_thw
-                # )
-                # print("Obtain reference model per token logps")
-                # with unwrap_model_for_generation(self.ref_model, self.accelerator) as unwrapped_model:
-                #     ref_per_token_logps = self._get_vlm_per_token_logps(unwrapped_model, prompt_inputs)
-                
                 ref_per_token_logps = self._get_vlm_per_token_logps(self.ref_model, prompt_inputs)
                 ref_per_token_logps = ref_per_token_logps[:, prompt_length - 1:]
             else:
                 with self.accelerator.unwrap_model(model).disable_adapter():
                     ref_per_token_logps = self._get_vlm_per_token_logps(model, prompt_inputs)
                 ref_per_token_logps = ref_per_token_logps[:, prompt_length - 1:]
-                    # ref_per_token_logps = self._get_per_token_logps(
-                    #     model, prompt_completion_ids, attention_mask, 
-                    #     # pixel_values, image_grid_thw
-                    # )
-        # print("Decoding completions")
+
         # Decode the generated completions
         completions = self.processing_class.batch_decode(completion_ids, skip_special_tokens=True)
         if is_conversational(inputs[0]):
             completions = [[{"role": "assistant", "content": completion}] for completion in completions]
-        
         # Compute the rewards
-        prompts = [prompt for prompt in prompts for _ in range(self.num_generations)]
-        # print("Computing rewards")
         rewards_per_func = torch.zeros(len(prompts), len(self.reward_funcs), device=device)
         for i, (reward_func, reward_processing_class) in enumerate(
             zip(self.reward_funcs, self.reward_processing_classes)
@@ -621,28 +611,50 @@ class MiniCPMVGRPOTrainer(Trainer):
                 reward_kwargs = {key: [] for key in inputs[0].keys() if key not in ["prompt", "completion"]}
                 for key in reward_kwargs:
                     for example in inputs:
-                        # Repeat each value in the column for `num_generations` times
-                        reward_kwargs[key].extend([example[key]] * self.num_generations)
+                        # reward_kwargs[key].extend([example[key]] * self.num_generations)
+                        reward_kwargs[key].extend([example[key]])
                 output_reward_func = reward_func(prompts=prompts, completions=completions, **reward_kwargs)
                 rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
-                # log highest reward
-                highest_reward = self.accelerator.gather_for_metrics(rewards_per_func[:, i]).max().item()
-                self._metrics[f"rewards/{reward_func.__name__}/max"].append(highest_reward)
-                
-        # print("Calculating Advantages")
+        # Gather rewards across processes
+        rewards_per_func = self.accelerator.gather(rewards_per_func)
         # Sum the rewards from all reward functions
         rewards = rewards_per_func.sum(dim=1)
 
         # Compute grouped-wise rewards
         mean_grouped_rewards = rewards.view(-1, self.num_generations).mean(dim=1)
         std_grouped_rewards = rewards.view(-1, self.num_generations).std(dim=1)
-
+        max_grouped_rewards = rewards.view(-1, self.num_generations).max(dim=1).values
+        min_grouped_rewards = rewards.view(-1, self.num_generations).min(dim=1).values
+        # log the highest rewards in each group
+        self._metrics["max_rewards"].append(max_grouped_rewards.mean().item())
+        self._metrics["min_rewards"].append(min_grouped_rewards.mean().item())
+        
+    
         # Normalize the rewards to compute the advantages
         mean_grouped_rewards = mean_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
         std_grouped_rewards = std_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
         advantages = (rewards - mean_grouped_rewards) / (std_grouped_rewards + 1e-4)
         
-        self.accelerator.print(f"Highest reward completion: {completions[rewards.argmax().item()][0]['content']}"+'\n'+f"Lowest reward completion: {completions[rewards.argmin().item()][0]['content']}")
+        
+        # print the completions with the max advantage in each group
+        max_advantages_idx = advantages.view(-1, self.num_generations).argmax(dim=1)
+        max_advantages_idx = max_advantages_idx + torch.arange(0, len(max_advantages_idx) * self.num_generations, self.num_generations, device=device)
+        
+        
+        # Get only the local slice of advantages
+        process_slice = slice(
+            self.accelerator.process_index * len(prompts),
+            (self.accelerator.process_index + 1) * len(prompts),
+        )
+        advantages = advantages[process_slice]        
+        # check if current process has the max advantage in the group
+        for i, idx in enumerate(max_advantages_idx):
+            if idx >= process_slice.start and idx < process_slice.stop:
+                # current process has the max advantage in the group
+                # print the completion
+                print(f"Best completion: {completions[idx - process_slice.start][0]['content']}")
+        
+
     
         # Log the metrics
         completion_length = self.accelerator.gather_for_metrics(completion_mask.sum(1)).float().mean().item()
@@ -671,8 +683,6 @@ class MiniCPMVGRPOTrainer(Trainer):
             "ref_per_token_logps": ref_per_token_logps,
             "advantages": advantages,
             "model_inputs": prompt_inputs,
-            # "pixel_values": pixel_values,
-            # "image_grid_thw": image_grid_thw
         }
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
@@ -680,12 +690,9 @@ class MiniCPMVGRPOTrainer(Trainer):
             raise ValueError("The GRPOTrainer does not support returning outputs")
     
         # Check if we need to generate new completions or use buffered ones
-        if self.state.global_step % self.num_iterations == 0:
-            inputs = self._generate_and_score_completions(inputs, model)
-            self._buffered_inputs[self._step % self.args.gradient_accumulation_steps] = inputs
-        else:
-            inputs = self._buffered_inputs[self._step % self.args.gradient_accumulation_steps]
+        inputs = self._generate_and_score_completions(inputs, model)
         self._step += 1
+        
         # # Get the prepared inputs
         # prompt_ids, prompt_mask = inputs["prompt_ids"], inputs["prompt_mask"]
         # completion_ids, completion_mask = inputs["completion_ids"], inputs["completion_mask"]
@@ -708,9 +715,7 @@ class MiniCPMVGRPOTrainer(Trainer):
         # Get the advantages from inputs
         advantages = inputs["advantages"]
 
-        # When using num_iterations == 1, old_per_token_logps == per_token_logps, so we can skip its computation
-        # and use per_token_logps.detach() instead
-        old_per_token_logps = inputs["old_per_token_logps"] if self.num_iterations > 1 else per_token_logps.detach()
+        old_per_token_logps = per_token_logps.detach()
 
         # Compute the policy ratio and clipped version
         coef_1 = torch.exp(per_token_logps - old_per_token_logps)
@@ -816,12 +821,12 @@ class MiniCPMVGRPOTrainer(Trainer):
         
         return RepeatRandomSampler(
             data_source=self.train_dataset,
-            mini_repeat_count=1,
-            batch_size=self.num_generations,
+            mini_repeat_count=self.num_generations,
+            batch_size=effective_batch_size // self.num_generations,
             repeat_count=self.num_iterations,
             seed=self.args.seed,
         )
-
+        
     def _get_eval_sampler(self, eval_dataset) -> Sampler:
         """Returns a sampler for evaluation."""
         return RepeatRandomSampler(
