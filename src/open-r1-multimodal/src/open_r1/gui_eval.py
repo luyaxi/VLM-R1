@@ -115,35 +115,6 @@ def compact_json_dumps(obj):
     return json.dumps(obj, indent=None, separators=(",", ":"), ensure_ascii=False)
 
 
-SYSTEM_PROMPT = f"""# Role
-一个擅长思考的通用智能体
-
-# Task
-思考，理解用户意图，并根据输入的当前屏幕截图等信息输出下一步的动作
-
-# Rule
-- 总是在**块/行注释中**描述你进行下一步操作的原因
-- 每轮参考 Example Output，以紧凑JSON格式输出**一个**操作
-- 输出的动作必须遵循动作空间Schema约束
-
-# 动作空间Schema
-""" + compact_json_dumps(SCHEMA) + \
-"""
-# Example Output 1
-/* 当前界面... */
-{"POINT":[123,456]}
-
-# Example Output 2
-// 任务已完成
-{"STATUS":"finish"}
-
-# Example Output 3
-// 需要查找...
-{"TYPE": "需要输入的文本"}
-"""
-
-
-
 
 
 def load_and_validate_action(res:str,):
@@ -246,9 +217,30 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
         action = load_and_validate_action(res)
     except Exception as e:
         return -1
+
+    action_keys = set(action.keys())
+    solution_keys = set(solution.keys())
+    if "thought" in action_keys:
+        action_keys.remove("thought")
+    if "thought" in solution_keys:
+        solution_keys.remove("thought")
+    
+    score_penalty = 0.0
+    
+    if action_keys - solution_keys:
+        print("Unexpected keys in action, Expected: ", solution_keys, " Got: ", action_keys)
+        score_penalty += 0.1
+    
+    if '```json' in res:
+        if '```json' in res[:20]:
+            score_penalty += 0.1
+        score_penalty += 0.1
     
     sub_scores = []
+    
     for k in solution.keys():
+        if k == "thought":
+            continue
         if k not in action:
             sub_scores.append(-1)
             continue
@@ -258,7 +250,7 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
                 sub_score = calculate_dist_score(action[k], solution[k], reso, bbox[0])
             
             case "duration":
-                if action[k] > 150 or action[k] < 5000:
+                if action[k] > 150 or action[k] <= 5000:
                     sub_score = 1.0
                 else:
                     print("Invalid duration: ", action[k])
@@ -307,7 +299,7 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
         print("No args to check.")
         return 0.0
     else:
-        return sum(sub_scores) / len(sub_scores)
+        return max((sum(sub_scores) / len(sub_scores)) - score_penalty, - 0.9)
     
 
 def action_args_check(completions, solution: list[dict], resolution, bboxs,**kwargs):
@@ -395,10 +387,10 @@ def calculate_dist_score(pred_loc: list[list[int,int]], gt_loc: list[int,int], r
         dist_score += 0.1 * ((1 - max_delta / 1000)**3)
     else:
         print("Point out of bbox: ", abs_x, abs_y, " Bbox: ", left_top, right_bottom)
-        delta_x = abs(gt_x - abs_x)
-        delta_y = abs(gt_y - abs_y)
+        delta_x = abs(gt_x/1000 - x_ratio)
+        delta_y = abs(gt_y/1000 - y_ratio)
         max_delta = max(delta_x,delta_y)
-        dist_score = - max_delta / 1000
+        dist_score = - max_delta
     
     return dist_score
     
@@ -535,12 +527,34 @@ class GUIRFTDataset(Dataset):
             print("Error while processing conversation.")
             return self[random.randint(0,len(self.data)-1)]
         conv = []
+        
+        def get_random_coordinate():
+            return [random.randint(0,img.size[0]),random.randint(0,img.size[1])]
+        
         conv.append({"role":"system","content":random.choice(SYSTEM_PROMPTS)})
-        # conv.append({"role": "user", "content": "帮助我完成给定任务，请直接输出可解析的json格式操作指令"})
-        # conv.append({"role": "assistant", "content": '// 用户请求帮助，但未提供具体任务\n{"thought":"好的，请提供具体任务描述"}'})
+        conv.append({"role": "user", "content": '\n'.join([
+                "以下是一些示例操作，您可以参考这些示例来生成您的操作指令：",
+                "1. 点击屏幕上的指定位置",
+                '// 当前为桌面，需要打开xx软件\n{"POINT":'+str(get_random_coordinate())+'}',
+                "2. 向上下左右滑动",
+                '// 当前界面未找到关键字，需要继续滑动\n{"POINT":'+str(get_random_coordinate())+',"to":"up"}',
+                "3. 触发特殊按键",
+                '// 需要先退回到桌面\n{"PRESS":"HOME"}',
+                "4. 向设备键入文本",
+                '/* 可以向聊天栏键入文本进行回复 */\n{"TYPE":"好的"}',
+                "5. 任务结束",
+                '// 任务已完成\n{"STATUS":"finish"}'
+                "6. 组合手势参数",
+                '// 需要长按以删除\n{"POINT":'+str(get_random_coordinate())+',"duration":3000}'
+                "7. 等待响应",
+                '// 当前界面正在加载，请等待\n{"duration":3000}',
+                "",
+                "你必须将思考过程写在注释中，以便我们了解你的思考过程。当你准备好后，请输出继续的操作指令。"
+            ]),})
+        conv.append({"role": "assistant", "content": '// 我已经充分了解要生成动作前在注释中进行思考，应该继续\n{"STATUS":"continue"}'})
         conv.append({"role": "user", "content": [
             img, 
-            f"图像分辨率: {str(img.size)}\n{user_query}\n请将思考过程写在注释中并直接输出可解析的JSON格式操作指令"
+            f"图像分辨率: {str(img.size)}\n问题：{user_query}"
         ]})
         
         return {
@@ -553,7 +567,20 @@ class GUIRFTDataset(Dataset):
         }
 
 SYSTEM_PROMPTS = [
-SYSTEM_PROMPT,
+f"""# Role
+一个擅长思考的通用智能体
+
+# Task
+思考，理解用户意图，并根据输入的当前屏幕截图等信息输出下一步的动作
+
+# Rule
+- 总是在**块/行注释中**描述你进行下一步操作的原因
+- 每轮参考 Example Output，以紧凑JSON格式输出**一个**操作
+- 输出的动作必须遵循动作空间Schema约束
+
+# 动作空间 Schema
+""" + compact_json_dumps(SCHEMA),
+
 f"""# 身份设定
 全能决策型数字助手
 
@@ -566,19 +593,7 @@ f"""# 身份设定
 - 严格匹配下方操作模板结构
 
 # 操作模板
-""" + compact_json_dumps(SCHEMA) + \
-"""
-# 示范案例
-/* 识别到登录界面元素 */
-{"POINT":[120,400]}
-
-# 成功终止
-// 流程执行完毕
-{"STATUS":"finish"}
-
-# 输入场景
-// 等待文字录入...
-{"TYPE": "预定单号"}""",
+""" + compact_json_dumps(SCHEMA),
 
 f"""# 角色定位
 跨平台界面交互决策引擎
@@ -592,19 +607,7 @@ f"""# 角色定位
 ■ 严格遵守动作参数架构
 
 # 参数架构
-""" + compact_json_dumps(SCHEMA) + \
-"""
-# 示例响应1
-// 检测到弹窗提醒
-{"POINT":[200,300]}
-
-# 示例响应2
-/* 需要输入验证码 */
-{"TYPE": "9821"}
-
-# 完成标识
-// 任务由于...
-{"STATUS": "impossible"}""",
+""" + compact_json_dumps(SCHEMA),
 
 '''## 智能体特性
 多模态交互决策专家
@@ -620,17 +623,7 @@ f"""# 角色定位
 - 保持原子化操作（单动作）
 
 ## 指令规范
-''' + compact_json_dumps(SCHEMA) + \
-'''
-|| 场景示例 ||
-// 发现未读消息提示
-{"POINT":[380,800]}
-
-// 需要滚动加载
-{"POINT":[100,810],"to":"up"}
-
-// 流程终点
-{"STATUS":"finish"}''',
+''' + compact_json_dumps(SCHEMA),
 
 """// 角色：界面导航AI
 // 使命：将视觉输入转化为精确操作
@@ -641,18 +634,7 @@ f"""# 角色定位
 3. 严格匹配操作数据格式
 
 '''动作格式规范'''
-""" + compact_json_dumps(SCHEMA) + \
-"""
-'''典型案例库'''
-案例A：
-/* 识别搜索框 */ {"POINT":[55,200]}
-
-案例B：
-// 完成支付 
-{"STATUS": "finish"}
-
-案例C：
-/* 需要长按 */ {"POINT":[220,470], "duration": 1000}""",
+""" + compact_json_dumps(SCHEMA),
 
 f"""🤖 智能体类型：界面操作生成器
 
@@ -667,12 +649,7 @@ f"""🤖 智能体类型：界面操作生成器
 ③ 符合预定义指令格式
 
 📜 指令格式手册：
-""" + compact_json_dumps(SCHEMA) + \
-"""
-💡 示例集合：
-🔹 /* 检测到错误提示 */ {"PRESS": "BACK"}
-🔹 /* 需要输入日期 */ {"TYPE": "2024-03-15"}
-🔹 {"STATUS": "finish"}""",
+""" + compact_json_dumps(SCHEMA),
 
 """<AGENT_PROFILE>
 类别：自动化决策AI
@@ -684,17 +661,7 @@ f"""🤖 智能体类型：界面操作生成器
 3. 严格模式：schema验证
 
 <ACTION_SCHEMA>
-""" + compact_json_dumps(SCHEMA) + \
-"""
-<DEMONSTRATIONS>
-[情境1] 检测到弹窗广告
-/* 广告拦截 */ {"POINT":[650,200]}
-
-[情境2] 需要身份验证
-{"STATUS": "need_feedback"}
-
-[情境3] 任务完成
-{"STATUS":"finish"}""",
+""" + compact_json_dumps(SCHEMA),
 
 f"""%% 数字操作员系统配置 %%
 
@@ -709,17 +676,7 @@ f"""%% 数字操作员系统配置 %%
 3. 符合API规范
 
 :: 操作API文档 ::
-""" + compact_json_dumps(SCHEMA) + \
-"""
-:: 测试用例 ::
-» 遇到确认对话框：
-/* 风险确认 */ {"STATUS":"need_feedback"}
-
-» 需要输入邮箱：
-{"TYPE":"user@domain.com"}
-
-» 流程终点标识：
-{"STATUS":"finish"}""",
+""" + compact_json_dumps(SCHEMA),
 
 f"""# 角色档案
 界面导航策略生成器
@@ -735,18 +692,7 @@ f"""# 角色档案
 ⚠ 严格类型检查
 
 ▼ 类型定义
-""" + compact_json_dumps(SCHEMA) + \
-"""
-▼ 示例空间
-▶ 场景：发现可滚动区域
-{"POINT":[400,250],"to":"down"}
-
-▶ 场景：表单提交完成
-// 操作终止
-{"STATUS":"finish"}
-
-▶ 场景：需要输入验证码
-{"TYPE":"4HJK"}""",
+""" + compact_json_dumps(SCHEMA),
 
 f"""|| 系统角色 ||
 界面操作决策中枢
@@ -762,17 +708,7 @@ f"""|| 系统角色 ||
 - 通过schema验证
 
 || 指令结构定义 ||
-""" + compact_json_dumps(SCHEMA) + \
-"""
-|| 典型场景库 ||
-» 文件上传场景：
-{"POINT":[200,500]}
-
-» 等待加载完成：
-/* 加载完成 */ {"duration":1000}
-
-» 异常处理：
-{"PRESS":"BACK"}""",
+""" + compact_json_dumps(SCHEMA),
 
 f"""⚙️ 机器角色：界面操作编译器
 
@@ -785,17 +721,7 @@ f"""⚙️ 机器角色：界面操作编译器
 3. 类型安全验证
 
 ✶ 指令语法
-""" + compact_json_dumps(SCHEMA) + \
-"""
-✸ 测试向量
-➀ 检测到通知图标：
-/* 查看通知 */ {"POINT":[320,100]}
-
-➁ 需要输入搜索词：
-{"TYPE": "AI Agent"}
-
-➂ 流程正常终止：
-{"STATUS":"finish"}""",
+""" + compact_json_dumps(SCHEMA),
 
 ]
 

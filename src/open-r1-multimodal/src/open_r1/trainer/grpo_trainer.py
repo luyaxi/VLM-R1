@@ -492,7 +492,7 @@ class MiniCPMVGRPOTrainer(Trainer):
         
         # print(prompt_inputs)
         
-        prompt_inputs.pop('image_sizes')
+        prompt_inputs.pop('image_sizes',None)
         # print(prompt_inputs.keys())
         prompt_ids, prompt_mask = prompt_inputs["input_ids"], prompt_inputs["attention_mask"]
 
@@ -642,8 +642,7 @@ class MiniCPMVGRPOTrainer(Trainer):
         std_grouped_rewards = std_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
         advantages = (rewards - mean_grouped_rewards) / (std_grouped_rewards + 1e-4)
         
-        self.accelerator.print(f"Highest reward completion: {completions[rewards.argmax().item()][0]['content']}")
-        self.accelerator.print(f"Lowest reward completion: {completions[rewards.argmin().item()][0]['content']}")
+        self.accelerator.print(f"Highest reward completion: {completions[rewards.argmax().item()][0]['content']}"+'\n'+f"Lowest reward completion: {completions[rewards.argmin().item()][0]['content']}")
     
         # Log the metrics
         completion_length = self.accelerator.gather_for_metrics(completion_mask.sum(1)).float().mean().item()
