@@ -3,7 +3,7 @@
 source ~/miniconda3/bin/activate vcpm
 cd `dirname $0`
 
-RUN_NAME="MiniCPM-26o-GRPO-1120px-abs-cIoU-KL"
+RUN_NAME="MiniCPM-26o-GRPO-1120px-abs-IoU-KL"
 
 set -ex
 CUDA_DEVICE_MAX_CONNECTIONS=1 UCX_NET_DEVICES=bond0 GLOO_SOCKET_IFNAME=bond0 NCCL_SOCKET_IFNAME=bond0 NCCL_IB_HCA="mlx5_2,mlx5_3,mlx5_5,mlx5_6" WANDB_PROJECT=CPM-RFT accelerate launch \
@@ -23,7 +23,7 @@ CUDA_DEVICE_MAX_CONNECTIONS=1 UCX_NET_DEVICES=bond0 GLOO_SOCKET_IFNAME=bond0 NCC
     --logging_steps 1 \
     --learning_rate 1e-6 \
     --weight_decay 0.1 \
-    --adam_beta2 0.95 \
+    --adam_beta2 0.99 \
     --lr_scheduler_type "cosine" \
     --tune_vision true \
     --gather_deepspeed3_params true \

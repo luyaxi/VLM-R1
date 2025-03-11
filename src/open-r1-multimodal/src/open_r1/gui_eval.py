@@ -87,7 +87,7 @@ SCHEMA = {
         }
     },
     "$defs": {
-        "Coordinate": {
+        "Location": {
             "type": "array",
             # "description": "坐标为相对于屏幕左上角位原点的相对位置，并且按照宽高比例缩放到0～1000，数组第一个元素为横坐标x，第二个元素为纵坐标y",
             "description": "坐标为相对于屏幕左上角位原点的绝对像素数，数组第一个元素为横坐标x，第二个元素为纵坐标y",
@@ -99,15 +99,15 @@ SCHEMA = {
             "minItems": 2,
             "maxItems": 2
         },
-        "Location": {
-            "type": "array",
-            "description": "由两个坐标组成的数组，表示一个矩形区域。两个坐标的连线不平行于X轴或Y轴。",
-            "items": {
-                "$ref": "#/$defs/Coordinate"
-            },
-            "minItems": 2,
-            "maxItems": 2
-        }
+        # "Location": {
+        #     "type": "array",
+        #     "description": "由两个坐标组成的数组，表示一个矩形区域。两个坐标的连线不平行于X轴或Y轴。",
+        #     "items": {
+        #         "$ref": "#/$defs/Coordinate"
+        #     },
+        #     "minItems": 2,
+        #     "maxItems": 2
+        # }
     }
 }
 
@@ -131,7 +131,7 @@ SYSTEM_PROMPT = f"""# Role
 """
 # Example Output 1
 /* 当前界面... */
-{"POINT":[[123,123],[456,456]]}
+{"POINT":[123,456]]}
 
 # Example Output 2
 // 任务已完成
@@ -202,13 +202,26 @@ def _action_type_check(res:str, solution: dict):
         if len(action_keys) == 0:
             return -0.5
         
-        jaccard_index = len(action_keys & solution_keys) / len(solution_keys.union(action_keys))
-        if jaccard_index < 1:
-            print("Mismatched keys in action, Expected: ", solution_keys, " Got: ", action_keys)
-            
+        # jaccard_index = len(action_keys & solution_keys) / len(solution_keys.union(action_keys))
+        # if jaccard_index < 1:
+        #     print("Mismatched keys in action, Expected: ", solution_keys, " Got: ", action_keys)
+        
+        score = 0.0
+        
+        if solution_keys & action_keys != solution_keys:
+            print("Missing keys in action, Expected: ", solution_keys, " Got: ", action_keys)
+            score = len(solution_keys & action_keys) / len(solution_keys)
+        
+        if action_keys - solution_keys:
+            print("Unexpected keys in action, Expected: ", solution_keys, " Got: ", action_keys)
+            # punish for unexpected keys
+            score -= 0.5 * len(action_keys - solution_keys) / len(action_keys)
+        
+        score = max(0,score)
+        
         if "```json" in res:
-            return jaccard_index * 0.95
-        return jaccard_index
+            return score * 0.95
+        return score
     except jsonschema.ValidationError as e:
         return -0.5
     except Exception as e:
@@ -344,126 +357,130 @@ def calculate_dist_score(pred_loc: list[list[int,int]], gt_loc: list[int,int], r
     #     delta_x = abs(gt_x - x_ratio)
     #     delta_y = abs(gt_y - y_ratio)
     #     max_delta = max(delta_x,delta_y)
-    #     dist_score = - max_delta / 1000
+        # dist_score = - max_delta / 1000
     
     # return dist_score
     
     # 相对坐标
-    # origin_res, now_res = res
-    # origin_w, origin_h = origin_res
-    # now_w, now_h = now_res
-    
-    # x, y = pred_loc
-    # gt_x, gt_y = gt_loc
-    # x_ratio = x / now_w
-    # y_ratio = y / now_h
-    
-    # abs_x = int(x_ratio * origin_w)
-    # abs_y = int(y_ratio * origin_h)
-    
-    
-    # if bbox is None or not isinstance(bbox, list):
-    #     print("No bbox provided.")
-    #     delta_x = abs(gt_x/1000 - x_ratio)
-    #     delta_y = abs(gt_y/1000 - y_ratio)
-    #     max_delta = max(delta_x,delta_y)
-    #     dist_score = - max_delta
-    #     return dist_score
-
-    # left_top, right_bottom = bbox
-    # if left_top[0] <= abs_x <= right_bottom[0] and left_top[1] <= abs_y <= right_bottom[1]:
-    #     dist_score = 0.9
-    #     # remain 0.1 for centering
-    #     max_delta = max(abs(abs_x - (left_top[0] + right_bottom[0]) / 2), abs(abs_y - (left_top[1] + right_bottom[1]) / 2))
-    #     dist_score += 0.1 * ((1 - max_delta / 1000)**3)
-    # else:
-    #     print("Point out of bbox: ", abs_x, abs_y, " Bbox: ", left_top, right_bottom)
-    #     delta_x = abs(gt_x - abs_x)
-    #     delta_y = abs(gt_y - abs_y)
-    #     max_delta = max(delta_x,delta_y)
-    #     dist_score = - max_delta / 1000
-    
-    # return dist_score
-    
-    # 绝对坐标iou
-    
-    left = min(pred_loc[0][0], pred_loc[1][0])
-    top = min(pred_loc[0][1], pred_loc[1][1])
-    right = max(pred_loc[0][0], pred_loc[1][0])
-    bottom = max(pred_loc[0][1], pred_loc[1][1])
-    
     origin_res, now_res = res
     origin_w, origin_h = origin_res
     now_w, now_h = now_res
     
-    pred_left_top = [int(left/now_w*origin_w),int(top/now_h*origin_h)]
-    pred_right_bottom = [int(right/now_w*origin_w),int(bottom/now_h*origin_h)]
+    x, y = pred_loc
+    gt_x, gt_y = gt_loc
+    x_ratio = x / now_w
+    y_ratio = y / now_h
     
-    if pred_left_top[0] >= pred_right_bottom[0] or pred_left_top[1] >= pred_right_bottom[1]:
-        print("Invalid prediction box: ", pred_left_top, pred_right_bottom)
+    if x_ratio > 1 or y_ratio > 1:
+        print("Invalid prediction coordinate: ", pred_loc)
         return -1.0
+    
+    abs_x = int(x_ratio * origin_w)
+    abs_y = int(y_ratio * origin_h)
+    
     
     if bbox is None or not isinstance(bbox, list):
         print("No bbox provided.")
-        gt_x, gt_y = gt_loc
-        
-        delta_x = abs(gt_x/1000 - (left + right) / (now_w * 2))
-        delta_y = abs(gt_y/1000 - (top + bottom) / (2 * now_h))
+        delta_x = abs(gt_x/1000 - x_ratio)
+        delta_y = abs(gt_y/1000 - y_ratio)
         max_delta = max(delta_x,delta_y)
         dist_score = - max_delta
         return dist_score
 
-    # calculate CIoU score
     left_top, right_bottom = bbox
-    
-    # Intersection area
-    x1 = max(left_top[0], pred_left_top[0])
-    y1 = max(left_top[1], pred_left_top[1])
-    x2 = min(right_bottom[0], pred_right_bottom[0])
-    y2 = min(right_bottom[1], pred_right_bottom[1])
-    inter_area = max(0, x2 - x1) * max(0, y2 - y1)
-    
-    # Compute areas of ground truth and predicted boxes
-    gt_area = max(right_bottom[0] - left_top[0], 0) * max(right_bottom[1] - left_top[1], 0)
-    pred_area = max(pred_right_bottom[0] - pred_left_top[0], 0) * max(pred_right_bottom[1] - pred_left_top[1], 0)
-    
-    # IoU calculation with smooth term to avoid division by zero
-    iou = inter_area / (gt_area + pred_area - inter_area + 1e-6)
-    
-    # Centers of ground truth and predicted boxes
-    gt_center_x = (left_top[0] + right_bottom[0]) / 2.0
-    gt_center_y = (left_top[1] + right_bottom[1]) / 2.0
-    pred_center_x = (pred_left_top[0] + pred_right_bottom[0]) / 2.0
-    pred_center_y = (pred_left_top[1] + pred_right_bottom[1]) / 2.0
-    
-    # Squared distance between the centers
-    center_distance_sq = (pred_center_x - gt_center_x) ** 2 + (pred_center_y - gt_center_y) ** 2
-    
-    # Smallest enclosing box
-    enc_left = min(left_top[0], pred_left_top[0])
-    enc_top = min(left_top[1], pred_left_top[1])
-    enc_right = max(right_bottom[0], pred_right_bottom[0])
-    enc_bottom = max(right_bottom[1], pred_right_bottom[1])
-    c_diag_sq = (enc_right - enc_left) ** 2 + (enc_bottom - enc_top) ** 2 + 1e-6  # add smooth term
-    
-    # Widths and heights for aspect ratio consistency calculation
-    gt_w = right_bottom[0] - left_top[0]
-    gt_h = right_bottom[1] - left_top[1]
-    pred_w = pred_right_bottom[0] - pred_left_top[0]
-    pred_h = pred_right_bottom[1] - pred_left_top[1]
-    
-    # Compute the aspect ratio penalty term v
-    if gt_h == 0 or pred_h == 0:
-        v = 0.0
+    if left_top[0] <= abs_x <= right_bottom[0] and left_top[1] <= abs_y <= right_bottom[1]:
+        dist_score = 0.9
+        # remain 0.1 for centering
+        max_delta = max(abs(abs_x - (left_top[0] + right_bottom[0]) / 2), abs(abs_y - (left_top[1] + right_bottom[1]) / 2))
+        dist_score += 0.1 * ((1 - max_delta / 1000)**3)
     else:
-        angle_gt = math.atan(gt_w / (gt_h + 1e-6))
-        angle_pred = math.atan(pred_w / (pred_h + 1e-6))
-        v = (4 / (math.pi ** 2)) * (angle_gt - angle_pred) ** 2
+        print("Point out of bbox: ", abs_x, abs_y, " Bbox: ", left_top, right_bottom)
+        delta_x = abs(gt_x - abs_x)
+        delta_y = abs(gt_y - abs_y)
+        max_delta = max(delta_x,delta_y)
+        dist_score = - max_delta / 1000
     
-    alpha = v / (1 - iou + v + 1e-6)
-    ciou = iou - (center_distance_sq / c_diag_sq) - alpha * v
+    return dist_score
     
-    return ciou
+    # 绝对坐标iou
+    
+    # left = min(pred_loc[0][0], pred_loc[1][0])
+    # top = min(pred_loc[0][1], pred_loc[1][1])
+    # right = max(pred_loc[0][0], pred_loc[1][0])
+    # bottom = max(pred_loc[0][1], pred_loc[1][1])
+    
+    # origin_res, now_res = res
+    # origin_w, origin_h = origin_res
+    # now_w, now_h = now_res
+    
+    # pred_left_top = [int(left/now_w*origin_w),int(top/now_h*origin_h)]
+    # pred_right_bottom = [int(right/now_w*origin_w),int(bottom/now_h*origin_h)]
+    
+    # if pred_left_top[0] >= pred_right_bottom[0] or pred_left_top[1] >= pred_right_bottom[1]:
+    #     print("Invalid prediction box: ", pred_left_top, pred_right_bottom)
+    #     return -1.0
+    
+    # if bbox is None or not isinstance(bbox, list):
+    #     print("No bbox provided.")
+    #     gt_x, gt_y = gt_loc
+        
+    #     delta_x = abs(gt_x/1000 - (left + right) / (now_w * 2))
+    #     delta_y = abs(gt_y/1000 - (top + bottom) / (2 * now_h))
+    #     max_delta = max(delta_x,delta_y)
+    #     dist_score = - max_delta
+    #     return dist_score
+
+    # # calculate CIoU score
+    # left_top, right_bottom = bbox
+    
+    # # Intersection area
+    # x1 = max(left_top[0], pred_left_top[0])
+    # y1 = max(left_top[1], pred_left_top[1])
+    # x2 = min(right_bottom[0], pred_right_bottom[0])
+    # y2 = min(right_bottom[1], pred_right_bottom[1])
+    # inter_area = max(0, x2 - x1) * max(0, y2 - y1)
+    
+    # # Compute areas of ground truth and predicted boxes
+    # gt_area = max(right_bottom[0] - left_top[0], 0) * max(right_bottom[1] - left_top[1], 0)
+    # pred_area = max(pred_right_bottom[0] - pred_left_top[0], 0) * max(pred_right_bottom[1] - pred_left_top[1], 0)
+    
+    # # IoU calculation with smooth term to avoid division by zero
+    # iou = inter_area / (gt_area + pred_area - inter_area + 1e-6)
+    
+    # # Centers of ground truth and predicted boxes
+    # gt_center_x = (left_top[0] + right_bottom[0]) / 2.0
+    # gt_center_y = (left_top[1] + right_bottom[1]) / 2.0
+    # pred_center_x = (pred_left_top[0] + pred_right_bottom[0]) / 2.0
+    # pred_center_y = (pred_left_top[1] + pred_right_bottom[1]) / 2.0
+    
+    # # Squared distance between the centers
+    # center_distance_sq = (pred_center_x - gt_center_x) ** 2 + (pred_center_y - gt_center_y) ** 2
+    
+    # # Smallest enclosing box
+    # enc_left = min(left_top[0], pred_left_top[0])
+    # enc_top = min(left_top[1], pred_left_top[1])
+    # enc_right = max(right_bottom[0], pred_right_bottom[0])
+    # enc_bottom = max(right_bottom[1], pred_right_bottom[1])
+    # c_diag_sq = (enc_right - enc_left) ** 2 + (enc_bottom - enc_top) ** 2 + 1e-6  # add smooth term
+    
+    # # Widths and heights for aspect ratio consistency calculation
+    # gt_w = right_bottom[0] - left_top[0]
+    # gt_h = right_bottom[1] - left_top[1]
+    # pred_w = pred_right_bottom[0] - pred_left_top[0]
+    # pred_h = pred_right_bottom[1] - pred_left_top[1]
+    
+    # # Compute the aspect ratio penalty term v
+    # if gt_h == 0 or pred_h == 0:
+    #     v = 0.0
+    # else:
+    #     angle_gt = math.atan(gt_w / (gt_h + 1e-6))
+    #     angle_pred = math.atan(pred_w / (pred_h + 1e-6))
+    #     v = (4 / (math.pi ** 2)) * (angle_gt - angle_pred) ** 2
+    
+    # alpha = v / (1 - iou + v + 1e-6)
+    # ciou = iou - (center_distance_sq / c_diag_sq) - alpha * v
+    
+    # return ciou
 
 
 
@@ -553,7 +570,7 @@ f"""# 身份设定
 """
 # 示范案例
 /* 识别到登录界面元素 */
-{"POINT": [[120,240],[300,400]]}
+{"POINT":[120,400]]}
 
 # 成功终止
 // 流程执行完毕
@@ -579,7 +596,7 @@ f"""# 角色定位
 """
 # 示例响应1
 // 检测到弹窗提醒
-{"POINT": [[200,500],[300,300]]}
+{"POINT":[200,300]]}
 
 # 示例响应2
 /* 需要输入验证码 */
@@ -607,10 +624,10 @@ f"""# 角色定位
 '''
 || 场景示例 ||
 // 发现未读消息提示
-{"POINT": [[380,720],[600,800]]}
+{"POINT":[380,800]]}
 
 // 需要滚动加载
-{"POINT": [[100,800],[110,810]],"to":"up"}
+{"POINT":[100,810]],"to":"up"}
 
 // 流程终点
 {"STATUS":"finish"}''',
@@ -628,14 +645,14 @@ f"""# 角色定位
 """
 '''典型案例库'''
 案例A：
-/* 识别搜索框 */ {"POINT":[[55,160],[300,200]]}
+/* 识别搜索框 */ {"POINT":[55,200]]}
 
 案例B：
 // 完成支付 
 {"STATUS": "finish"}
 
 案例C：
-/* 需要长按 */ {"POINT": [[220,440],[250,470]], "duration": 1000}""",
+/* 需要长按 */ {"POINT":[220,470], "duration": 1000}""",
 
 f"""🤖 智能体类型：界面操作生成器
 
@@ -671,7 +688,7 @@ f"""🤖 智能体类型：界面操作生成器
 """
 <DEMONSTRATIONS>
 [情境1] 检测到弹窗广告
-/* 广告拦截 */ {"POINT": [[650,80],[800,200]]}
+/* 广告拦截 */ {"POINT":[650,200]]}
 
 [情境2] 需要身份验证
 {"STATUS": "need_feedback"}
@@ -722,7 +739,7 @@ f"""# 角色档案
 """
 ▼ 示例空间
 ▶ 场景：发现可滚动区域
-{"POINT":[[400,200],[450,250]],"to":"down"}
+{"POINT":[400,250],"to":"down"}
 
 ▶ 场景：表单提交完成
 // 操作终止
@@ -749,7 +766,7 @@ f"""|| 系统角色 ||
 """
 || 典型场景库 ||
 » 文件上传场景：
-{"POINT": [[200,400],[300,500]]}
+{"POINT":[200,500]}
 
 » 等待加载完成：
 /* 加载完成 */ {"duration":1000}
@@ -772,7 +789,7 @@ f"""⚙️ 机器角色：界面操作编译器
 """
 ✸ 测试向量
 ➀ 检测到通知图标：
-/* 查看通知 */ {"PRESS":[[320,50],[400,100]]}
+/* 查看通知 */ {"POINT":[320,100]}
 
 ➁ 需要输入搜索词：
 {"TYPE": "AI Agent"}
