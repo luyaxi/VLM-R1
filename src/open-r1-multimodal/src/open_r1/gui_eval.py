@@ -285,13 +285,13 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
                     if action[k] is None:
                         sub_score = 1.0
                     else:
-                        print("Required ", solution[k], ", got: ", action[k])
+                        # print("Required ", solution[k], ", got: ", action[k])
                         sub_score = 0.0
                 else:
                     if action[k] == solution[k]:
                         sub_score = 1.0
                     else:
-                        print("Required ", solution[k], ", got: ", action[k])
+                        # print("Required ", solution[k], ", got: ", action[k])
                         sub_score = 0.0
                         
         sub_scores.append(sub_score)
