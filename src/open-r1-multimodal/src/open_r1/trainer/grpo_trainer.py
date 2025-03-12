@@ -652,7 +652,7 @@ class MiniCPMVGRPOTrainer(Trainer):
             if idx >= process_slice.start and idx < process_slice.stop:
                 # current process has the max advantage in the group
                 # print the completion
-                print(f"Best completion: {completions[idx - process_slice.start][0]['content']}")
+                print(f"Best completion {rewards[idx].item()} : {completions[idx - process_slice.start][0]['content']}")
         
 
     
