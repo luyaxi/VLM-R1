@@ -173,20 +173,20 @@ def _action_type_check(res:str, solution: dict):
         if len(action_keys) == 0:
             return -0.5
         
-        # jaccard_index = len(action_keys & solution_keys) / len(solution_keys.union(action_keys))
+        jaccard_index = len(action_keys & solution_keys) / len(solution_keys.union(action_keys))
         # if jaccard_index < 1:
-        #     print("Mismatched keys in action, Expected: ", solution_keys, " Got: ", action_keys)
+            # print("Mismatched keys in action, Expected: ", solution_keys, " Got: ", action_keys)
+        score = jaccard_index
+        # score = 0.0
         
-        score = 0.0
+        # if solution_keys & action_keys != solution_keys:
+        #     print("Missing keys in action, Expected: ", solution_keys, " Got: ", action_keys)
+        #     score = len(solution_keys & action_keys) / len(solution_keys)
         
-        if solution_keys & action_keys != solution_keys:
-            print("Missing keys in action, Expected: ", solution_keys, " Got: ", action_keys)
-            score = len(solution_keys & action_keys) / len(solution_keys)
-        
-        if action_keys - solution_keys:
-            print("Unexpected keys in action, Expected: ", solution_keys, " Got: ", action_keys)
-            # punish for unexpected keys
-            score -= 0.5 * len(action_keys - solution_keys) / len(action_keys)
+        # if action_keys - solution_keys:
+        #     print("Unexpected keys in action, Expected: ", solution_keys, " Got: ", action_keys)
+        #     # punish for unexpected keys
+        #     score -= 0.5 * len(action_keys - solution_keys) / len(action_keys)
         
         score = max(0,score)
         
@@ -205,7 +205,7 @@ def action_type_check(completions, solution: list[dict], **kwargs):
     scores = []
     for future in futures:
         try:
-            scores.append(future.result(timeout=5))
+            scores.append(future.result(timeout=5)*0.3)
         except TimeoutError as e:
             print("Timeout while checking type.")
             scores.append(0.0)
@@ -229,7 +229,7 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
     
     if action_keys - solution_keys:
         # print("Unexpected keys in action, Expected: ", solution_keys, " Got: ", action_keys)
-        score_penalty += 0.1
+        score_penalty += len(action_keys - solution_keys)*0.5
     
     if '```json' in res:
         if '```json' in res[:20]:
