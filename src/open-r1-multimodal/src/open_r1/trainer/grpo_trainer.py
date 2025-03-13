@@ -273,6 +273,9 @@ class MiniCPMVGRPOTrainer(Trainer):
         elif is_deepspeed_zero3_enabled():
             if "minicpm" in model_id.lower():
                 model_init_kwargs["trust_remote_code"] = True
+                if "minicpm-o" in model_id.lower():
+                    model_init_kwargs["init_tts"] = False
+                    model_init_kwargs["init_audio"] = False
             self.ref_model = AutoModelForCausalLM.from_pretrained(model_id, **model_init_kwargs)
         elif peft_config is None:
             # If PEFT configuration is not provided, create a reference model based on the initial model.
@@ -427,7 +430,6 @@ class MiniCPMVGRPOTrainer(Trainer):
         use_reentrant = (
             "use_reentrant" not in gradient_checkpointing_kwargs or gradient_checkpointing_kwargs["use_reentrant"]
         )
-        use_reentrant = False
 
         if use_reentrant:
             model.enable_input_require_grads()
@@ -462,26 +464,35 @@ class MiniCPMVGRPOTrainer(Trainer):
         # for na,a in model.vpm.named_parameters():
         #     print(na,a.requires_grad)
         
-        inputs_embeds,_ = model.get_vllm_embedding({
+        # inputs_embeds,_ = model.get_vllm_embedding({
+        #     "input_ids": prompt_inputs["input_ids"],
+        #     "image_bound": prompt_inputs["image_bound"],
+        #     "tgt_sizes": prompt_inputs["tgt_sizes"],
+        #     "pixel_values": prompt_inputs["pixel_values"],
+        # })
+        # attention_mask = prompt_inputs["attention_mask"]
+        # position_ids = attention_mask.long().cumsum(-1) - 1
+        # position_ids.masked_fill_(attention_mask == 0, 1)
+        # inputs = {
+        #     "inputs_embeds": inputs_embeds,
+        #     "attention_mask": attention_mask,
+        #     "position_ids": position_ids,
+        #     "use_cache": prompt_inputs.get("use_cache", False),
+        # }
+        # logits = model.llm(**inputs).logits
+        attention_mask = prompt_inputs["attention_mask"]
+        position_ids = attention_mask.long().cumsum(-1) - 1
+        position_ids.masked_fill_(attention_mask == 0, 1)
+        inputs = {
             "input_ids": prompt_inputs["input_ids"],
             "image_bound": prompt_inputs["image_bound"],
             "tgt_sizes": prompt_inputs["tgt_sizes"],
             "pixel_values": prompt_inputs["pixel_values"],
-        })
-        print(inputs_embeds.requires_grad,inputs_embeds.grad,inputs_embeds.grad_fn)
-        # inputs = model.llm.prepare_inputs_for_generation(**prompt_inputs)
-        attention_mask = prompt_inputs["attention_mask"]
-        # print(attention_mask)
-        position_ids = attention_mask.long().cumsum(-1) - 1
-        position_ids.masked_fill_(attention_mask == 0, 1)
-        inputs = {
-            "inputs_embeds": inputs_embeds,
             "attention_mask": attention_mask,
             "position_ids": position_ids,
-            "use_cache": prompt_inputs.get("use_cache", False),
         }
         
-        logits = model.llm(**inputs).logits
+        logits = model(data=inputs,use_cache=prompt_inputs.get("use_cache", False)).logits
         
         logits = logits[:, :-1, :]
         input_ids = prompt_inputs["input_ids"][:, 1:]
@@ -606,13 +617,14 @@ class MiniCPMVGRPOTrainer(Trainer):
                     ref_per_token_logps = self._get_vlm_per_token_logps(model, prompt_inputs)
                 ref_per_token_logps = ref_per_token_logps[:, prompt_length - 1:]
 
-            res = 0
-            for (na,a),(nb,b) in zip(model.vpm.named_parameters(),self.ref_model.vpm.named_parameters()):
-                try:
-                    res += torch.norm(a-b)
-                except:
-                    raise Exception(f"Error in {na}{a.shape} and {nb}{b.shape}")
-            print(res)
+            # res = 0
+            # for (na,a),(nb,b) in zip(model.vpm.named_parameters(),self.ref_model.vpm.named_parameters()):
+                
+            #     try:    
+            #         res += torch.norm(a-b)
+            #     except:
+            #         raise Exception(f"Error in {na}{a.shape} and {nb}{b.shape}")
+            # print(res)
 
         # Decode the generated completions
         completions = self.processing_class.batch_decode(completion_ids, skip_special_tokens=True)

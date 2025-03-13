@@ -13,19 +13,19 @@ from PIL import Image
 
 import torch
 
-# model_a = AutoModelForCausalLM.from_pretrained("/data3/workhome/luyaxi/VCPM-R1/src/open-r1-multimodal/output/MiniCPMV-HW-7B-GRPO-1120px-32s-lr/checkpoint-100", trust_remote_code=True,torch_dtype=torch.bfloat16).to('cuda')
-# model_b = AutoModelForCausalLM.from_pretrained("/data3/workhome/luyaxi/VCPM-R1/src/open-r1-multimodal/output/MiniCPMV-HW-7B-GRPO-1120px-32s-lr/checkpoint-200", trust_remote_code=True,torch_dtype=torch.bfloat16).to('cuda')
+model_a = AutoModelForCausalLM.from_pretrained("/data3/workhome/luyaxi/VCPM-R1/src/open-r1-multimodal/output/MiniCPMV-HW-7B-GRPO-1120px-32s-lr-debug/checkpoint-3", trust_remote_code=True,torch_dtype=torch.bfloat16).to('cuda')
+model_b = AutoModelForCausalLM.from_pretrained("/share_data/data1/models/MiniCPM-V-HW-7B-hg", trust_remote_code=True,torch_dtype=torch.bfloat16).to('cuda')
 
-# res = 0
-# for a,b in zip(model_a.vpm.parameters(),model_b.vpm.parameters()):
-#     res += (a-b).norm()
-# print(res)
+res = 0
+for a,b in zip(model_a.vpm.parameters(),model_b.vpm.parameters()):
+    res += (a-b).norm()
+print(res)
 
-model_path = "/share_data/data1/models/MiniCPM-V-HW-7B-hg"
+# model_path = "/share_data/data1/models/MiniCPM-V-HW-7B-hg"
 
-model = AutoModelForCausalLM.from_pretrained(model_path, trust_remote_code=True,torch_dtype=torch.bfloat16).to('cuda')
-tokenizer = AutoTokenizer.from_pretrained(model_path,trust_remote_code=True)
-processor = AutoProcessor.from_pretrained(model_path,trust_remote_code=True)
+# model = AutoModelForCausalLM.from_pretrained(model_path, trust_remote_code=True,torch_dtype=torch.bfloat16).to('cuda')
+# tokenizer = AutoTokenizer.from_pretrained(model_path,trust_remote_code=True)
+# processor = AutoProcessor.from_pretrained(model_path,trust_remote_code=True)
 
 
 # model.save_pretrained("/data3/workhome/luyaxi/VCPM-R1/models/MiniCPM-V-HW-7B-hg",save_optimizer=False,)
