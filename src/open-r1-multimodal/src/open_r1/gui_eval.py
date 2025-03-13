@@ -216,7 +216,7 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
     try:
         action = load_and_validate_action(res)
     except Exception as e:
-        return -1
+        return -2
 
     action_keys = set(action.keys())
     solution_keys = set(solution.keys())
@@ -229,7 +229,7 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
     
     if action_keys - solution_keys:
         # print("Unexpected keys in action, Expected: ", solution_keys, " Got: ", action_keys)
-        score_penalty += len(action_keys - solution_keys)*0.5
+        score_penalty += len(action_keys - solution_keys)*0.3
     
     if '```json' in res:
         if '```json' in res[:20]:
@@ -244,62 +244,58 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
         if k not in action:
             sub_scores.append(-1)
             continue
-        sub_score = -1
+        sub_score = 0.1
         match k:
             case "POINT":
-                sub_score = calculate_dist_score(action[k], solution[k], reso, bbox[0])
+                sub_score += calculate_dist_score(action[k], solution[k], reso, bbox[0])
             
             case "duration":
                 if action[k] > 150 or action[k] <= 5000:
-                    sub_score = 1.0
+                    sub_score += 1.0
                 else:
                     print("Invalid duration: ", action[k])
-                    sub_score = 0
             
             case "TYPE":
                 similarity = difflib.SequenceMatcher(None, action[k], solution[k]).ratio()
-                sub_score = similarity
+                sub_score += similarity
                 # print("Text: ",solution[k],", Got: ", action[k],". Similarity: ", similarity)
                 
             case "to":
                 if isinstance(solution[k], list):
                     if isinstance(action[k],list):
-                        sub_score = calculate_dist_score(action[k], solution[k], reso, bbox[1])
+                        sub_score += calculate_dist_score(action[k], solution[k], reso, bbox[1])
                     else:
                         print(f"Invalid to for direction {solution[k]}: ", action[k])
-                        sub_score = -1
                     
                 else:
                     if isinstance(action[k],list):
-                        sub_score = 0.0
                         print(f"Invalid to for direction {solution[k]}: ", action[k])
                     else:
                         if action[k] == solution[k]:
-                            sub_score = 1.0
+                            sub_score += 1.0
                         else:
-                            sub_score = 0.0
                             print("Invalid to: ", action[k])
             
             case _:
                 if solution[k] is None:
                     if action[k] is None:
-                        sub_score = 1.0
+                        sub_score += 1.0
                     else:
+                        pass
                         # print("Required ", solution[k], ", got: ", action[k])
-                        sub_score = 0.0
                 else:
                     if action[k] == solution[k]:
-                        sub_score = 1.0
+                        sub_score += 1.0
                     else:
+                        pass
                         # print("Required ", solution[k], ", got: ", action[k])
-                        sub_score = 0.0
                         
         sub_scores.append(sub_score)
     if not sub_scores:
         print("No args to check.")
         return 0.0
     else:
-        return max((sum(sub_scores) / len(sub_scores)) - score_penalty, - 0.9)
+        return (sum(sub_scores) / len(sub_scores)) - score_penalty
     
 
 def action_args_check(completions, solution: list[dict], resolution, bboxs,**kwargs):

@@ -13,7 +13,15 @@ from PIL import Image
 
 import torch
 
-model_path = "/data3/workhome/luyaxi/VCPM-R1/models/MiniCPM-V-HW-7B-hg"
+# model_a = AutoModelForCausalLM.from_pretrained("/data3/workhome/luyaxi/VCPM-R1/src/open-r1-multimodal/output/MiniCPMV-HW-7B-GRPO-1120px-32s-lr/checkpoint-100", trust_remote_code=True,torch_dtype=torch.bfloat16).to('cuda')
+# model_b = AutoModelForCausalLM.from_pretrained("/data3/workhome/luyaxi/VCPM-R1/src/open-r1-multimodal/output/MiniCPMV-HW-7B-GRPO-1120px-32s-lr/checkpoint-200", trust_remote_code=True,torch_dtype=torch.bfloat16).to('cuda')
+
+# res = 0
+# for a,b in zip(model_a.vpm.parameters(),model_b.vpm.parameters()):
+#     res += (a-b).norm()
+# print(res)
+
+model_path = "/share_data/data1/models/MiniCPM-V-HW-7B-hg"
 
 model = AutoModelForCausalLM.from_pretrained(model_path, trust_remote_code=True,torch_dtype=torch.bfloat16).to('cuda')
 tokenizer = AutoTokenizer.from_pretrained(model_path,trust_remote_code=True)
@@ -24,15 +32,17 @@ processor = AutoProcessor.from_pretrained(model_path,trust_remote_code=True)
 
 # with torch.no_grad():
 
-    # inputs = processor(
-    #     processor.tokenizer.apply_chat_template([
-    #         {"role": "user", "content": "描述图像(<image>./</image>)"},
-    #     ],tokenize=False,add_generation_prompt=True),
-    #     [Image.open("test.png")],
-    #     return_tensors="pt"    
-    # ).to("cuda")
-    # inputs["inputs_embeds"],_ = model.get_vllm_embedding(inputs)
-    # print(inputs["inputs_embeds"].shape)
+inputs = processor(
+    processor.tokenizer.apply_chat_template([
+        {"role": "user", "content": "描述图像(<image>./</image>)"},
+    ],tokenize=False,add_generation_prompt=True),
+    [Image.open("test.png")],
+    return_tensors="pt"    
+).to("cuda")
+print(inputs)
+
+inputs["inputs_embeds"],_ = model.get_vllm_embedding(inputs)
+print(inputs["inputs_embeds"])
 # import pdb 
 # pdb.set_trace()
 # inputs = model.llm.prepare_inputs_for_generation(**inputs)
@@ -54,18 +64,18 @@ processor = AutoProcessor.from_pretrained(model_path,trust_remote_code=True)
 # for idx, r in enumerate(res):
 #     print(f"gen {idx}: {processor.tokenizer.decode(r,skip_special_tokens=True)}")
 
-conv = [{
-    "role":"user",
-    "content": [
-        "描述图像",
-        Image.open("test.png")
-    ]
-}]
+# conv = [{
+#     "role":"user",
+#     "content": [
+#         "描述图像",
+#         Image.open("test.png")
+#     ]
+# }]
 
 # conv = [
 #     {"role": "user", "content":"how are you"},
 # ]
 
-res = model.chat(None,conv,tokenizer=tokenizer)
+# res = model.chat(None,conv,tokenizer=tokenizer)
 
-print(res)
+# print(res)

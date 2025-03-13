@@ -3,13 +3,14 @@ debug: false
 deepspeed_config:
   deepspeed_hostfile: /data3/workhome/luyaxi/VCPM-R1/src/open-r1-multimodal/hostfile
   deepspeed_multinode_launcher: pdsh
-  gradient_accumulation_steps: 2
+  gradient_accumulation_steps: 1
   gradient_clipping: 10.0
   offload_optimizer_device: cpu
   offload_param_device: cpu
   zero3_init_flag: true
   zero3_save_16bit_model: true
   zero_stage: 3
+  # reduce_bucket_size: 1e8
 distributed_type: DEEPSPEED
 downcast_bf16: 'no'
 dynamo_config:

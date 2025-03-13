@@ -5,7 +5,7 @@ cd `dirname $0`
 
 # RUN_NAME="MiniCPM-26o-GRPO-1120px-abs-IoU-KL"
 
-RUN_NAME="MiniCPMV-HW-7B-GRPO-1120px-32s-lr"
+RUN_NAME="MiniCPMV-HW-7B-GRPO-1120px-32s-lr-debug"
 
 set -ex
 TOKENIZERS_PARALLELISM=false CUDA_DEVICE_MAX_CONNECTIONS=1 UCX_NET_DEVICES=bond0 GLOO_SOCKET_IFNAME=bond0 NCCL_SOCKET_IFNAME=bond0 NCCL_IB_HCA="mlx5_2,mlx5_3,mlx5_5,mlx5_6" WANDB_PROJECT=CPM-RFT accelerate launch \
@@ -20,8 +20,8 @@ TOKENIZERS_PARALLELISM=false CUDA_DEVICE_MAX_CONNECTIONS=1 UCX_NET_DEVICES=bond0
     --max_line_res 1120 \
     --num_generations 32 \
     --num_iterations 1 \
-    --per_device_train_batch_size 8 \
-    --gradient_accumulation_steps 2 \
+    --per_device_train_batch_size 1 \
+    --gradient_accumulation_steps 1 \
     --max_grad_norm 10.0 \
     --logging_steps 1 \
     --learning_rate 3e-6 \
@@ -37,6 +37,7 @@ TOKENIZERS_PARALLELISM=false CUDA_DEVICE_MAX_CONNECTIONS=1 UCX_NET_DEVICES=bond0
     --gradient_checkpointing true \
     --num_train_epochs 1 \
     --run_name $RUN_NAME \
-    --save_steps 200 \
+    --save_steps 100 \
     --save_only_model true \
     --reward_funcs "args"
+    # --attn_implementation flash_attention_2 \

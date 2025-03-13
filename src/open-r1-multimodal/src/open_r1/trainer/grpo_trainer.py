@@ -427,6 +427,7 @@ class MiniCPMVGRPOTrainer(Trainer):
         use_reentrant = (
             "use_reentrant" not in gradient_checkpointing_kwargs or gradient_checkpointing_kwargs["use_reentrant"]
         )
+        use_reentrant = False
 
         if use_reentrant:
             model.enable_input_require_grads()
@@ -458,9 +459,30 @@ class MiniCPMVGRPOTrainer(Trainer):
         return torch.stack(per_token_logps)
     
     def _get_vlm_per_token_logps(self, model, prompt_inputs):
-        prompt_inputs["input_embeds"],_ = model.get_vllm_embedding(prompt_inputs)
-        model_inputs = model.llm.prepare_inputs_for_generation(**prompt_inputs)
-        logits = model.llm(**model_inputs).logits
+        # for na,a in model.vpm.named_parameters():
+        #     print(na,a.requires_grad)
+        
+        inputs_embeds,_ = model.get_vllm_embedding({
+            "input_ids": prompt_inputs["input_ids"],
+            "image_bound": prompt_inputs["image_bound"],
+            "tgt_sizes": prompt_inputs["tgt_sizes"],
+            "pixel_values": prompt_inputs["pixel_values"],
+        })
+        print(inputs_embeds.requires_grad,inputs_embeds.grad,inputs_embeds.grad_fn)
+        # inputs = model.llm.prepare_inputs_for_generation(**prompt_inputs)
+        attention_mask = prompt_inputs["attention_mask"]
+        # print(attention_mask)
+        position_ids = attention_mask.long().cumsum(-1) - 1
+        position_ids.masked_fill_(attention_mask == 0, 1)
+        inputs = {
+            "inputs_embeds": inputs_embeds,
+            "attention_mask": attention_mask,
+            "position_ids": position_ids,
+            "use_cache": prompt_inputs.get("use_cache", False),
+        }
+        
+        logits = model.llm(**inputs).logits
+        
         logits = logits[:, :-1, :]
         input_ids = prompt_inputs["input_ids"][:, 1:]
         per_token_logps = []
@@ -487,8 +509,7 @@ class MiniCPMVGRPOTrainer(Trainer):
             
             images = []
             for i, msg in enumerate(copy_msgs):
-                role = msg["role"]
-                content = msg["content"]
+                role, content = msg["role"], msg["content"]
                 
                 if isinstance(content,str):
                     content = [content]
@@ -584,6 +605,14 @@ class MiniCPMVGRPOTrainer(Trainer):
                 with self.accelerator.unwrap_model(model).disable_adapter():
                     ref_per_token_logps = self._get_vlm_per_token_logps(model, prompt_inputs)
                 ref_per_token_logps = ref_per_token_logps[:, prompt_length - 1:]
+
+            res = 0
+            for (na,a),(nb,b) in zip(model.vpm.named_parameters(),self.ref_model.vpm.named_parameters()):
+                try:
+                    res += torch.norm(a-b)
+                except:
+                    raise Exception(f"Error in {na}{a.shape} and {nb}{b.shape}")
+            print(res)
 
         # Decode the generated completions
         completions = self.processing_class.batch_decode(completion_ids, skip_special_tokens=True)
@@ -688,27 +717,13 @@ class MiniCPMVGRPOTrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         if return_outputs:
             raise ValueError("The GRPOTrainer does not support returning outputs")
-    
         # Check if we need to generate new completions or use buffered ones
         inputs = self._generate_and_score_completions(inputs, model)
         self._step += 1
         
-        # # Get the prepared inputs
-        # prompt_ids, prompt_mask = inputs["prompt_ids"], inputs["prompt_mask"]
-        # completion_ids, completion_mask = inputs["completion_ids"], inputs["completion_mask"]
-        # pixel_values = inputs["pixel_values"]
-        # image_grid_thw = inputs["image_grid_thw"]
-        
-        # # Concatenate for full sequence
-        # input_ids = torch.cat([prompt_ids, completion_ids], dim=1)
-        # attention_mask = torch.cat([prompt_mask, completion_mask], dim=1)
-
-        # Get the current policy's log probabilities
-        # per_token_logps = self._get_per_token_logps(model, input_ids, attention_mask, pixel_values, image_grid_thw)
         prompt_ids = inputs["prompt_ids"]
         completion_mask = inputs["completion_mask"]
         per_token_logps = self._get_vlm_per_token_logps(model, inputs["model_inputs"])
-        
         # Get rid of the prompt (-1 because of the shift done in get_per_token_logps)
         per_token_logps = per_token_logps[:, prompt_ids.size(1) - 1:]
 
@@ -734,6 +749,7 @@ class MiniCPMVGRPOTrainer(Trainer):
             mean_kl = ((per_token_kl * completion_mask).sum(dim=1) / completion_mask.sum(dim=1)).mean()
             self._metrics["kl"].append(self.accelerator.gather_for_metrics(mean_kl).mean().item())
 
+        # print(per_token_loss, completion_mask)
         # Compute final loss
         loss = ((per_token_loss * completion_mask).sum(dim=1) / completion_mask.sum(dim=1)).mean()
 
