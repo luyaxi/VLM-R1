@@ -215,6 +215,8 @@ def action_type_check(completions, solution: list[dict], **kwargs):
 def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
     try:
         action = load_and_validate_action(res)
+        if not (res.startswith("//") or res.startswith("/*")):
+            raise Exception("No thought found.")
     except Exception as e:
         return -2
 
@@ -523,29 +525,29 @@ class GUIRFTDataset(Dataset):
         conv = []
         
         def get_random_coordinate():
-            return [random.randint(0,img.size[0]),random.randint(0,img.size[1])]
+            return [random.randint(0,1000),random.randint(0,1000)]
         
         conv.append({"role":"system","content":random.choice(SYSTEM_PROMPTS)})
         conv.append({"role": "user", "content": '\n'.join([
                 "以下是一些示例操作，您可以参考这些示例来生成您的操作指令：",
                 "1. 点击屏幕上的指定位置",
-                '// 当前为桌面，需要打开xx软件\n{"POINT":'+str(get_random_coordinate())+'}',
-                "2. 向上下左右滑动",
-                '// 当前界面未找到关键字，需要继续滑动\n{"POINT":'+str(get_random_coordinate())+',"to":"up"}',
+                '{"POINT":'+str(get_random_coordinate())+'}',
+                "2. 向上滑动",
+                '{"POINT":'+str(get_random_coordinate())+',"to":"up"}',
                 "3. 触发特殊按键",
-                '// 需要先退回到桌面\n{"PRESS":"HOME"}',
+                '{"PRESS":"HOME"}',
                 "4. 向设备键入文本",
-                '/* 可以向聊天栏键入文本进行回复 */\n{"TYPE":"好的"}',
-                "5. 任务结束",
-                '// 任务已完成\n{"STATUS":"finish"}'
+                '{"TYPE":"你好"}',
+                "5. 结束任务",
+                '{"STATUS":"finish"}'
                 "6. 组合手势参数",
-                '// 需要长按以删除\n{"POINT":'+str(get_random_coordinate())+',"duration":3000}'
+                '{"POINT":'+str(get_random_coordinate())+',"duration":3000}'
                 "7. 等待响应",
-                '// 当前界面正在加载，请等待\n{"duration":3000}',
+                '{"duration":3000}',
                 "",
                 "你必须将思考过程写在注释中，以便我们了解你的思考过程。当你准备好后，请输出继续的操作指令。"
             ]),})
-        conv.append({"role": "assistant", "content": '// 我已经充分了解要生成动作前在注释中进行思考，应该继续\n{"STATUS":"continue"}'})
+        conv.append({"role": "assistant", "content": '/* 了解，我需要在注释中进行批判性思考后以JSON格式输出操作指令。\n我应该先分析给定观察后再思考如何解决当前用户问题。\n目前只是测试我是否能遵循格式，我需要直接输出继续任务的指令 */\n{"STATUS":"continue"}'})
         conv.append({"role": "user", "content": [
             img, 
             f"图像分辨率: {str(img.size)}\n问题：{user_query}"

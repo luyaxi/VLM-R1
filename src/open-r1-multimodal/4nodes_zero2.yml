@@ -1,7 +1,7 @@
 compute_environment: LOCAL_MACHINE
 debug: false
 deepspeed_config:
-  deepspeed_config_file: /data3/workhome/luyaxi/VCPM-R1/src/open-r1-multimodal/local_scripts/ds_zero3.json
+  deepspeed_config_file: /data3/workhome/luyaxi/VCPM-R1/src/open-r1-multimodal/local_scripts/ds_zero2.json
   deepspeed_hostfile: /data3/workhome/luyaxi/VCPM-R1/src/open-r1-multimodal/hostfile
   deepspeed_multinode_launcher: pdsh
   zero3_init_flag: true

@@ -343,7 +343,7 @@ class MiniCPMVGRPOTrainer(Trainer):
         self.gather_deepspeed3_params = args.gather_deepspeed3_params
         self.beta = args.beta
         self.epsilon = args.epsilon
-
+        self.global_var = args.global_var
         # Multi-step
         self.num_iterations = args.num_iterations  # = 𝜇 in the GRPO paper
         # if self.num_iterations != 1:
@@ -661,22 +661,34 @@ class MiniCPMVGRPOTrainer(Trainer):
         # Sum the rewards from all reward functions
         rewards = rewards_per_func.sum(dim=1)
 
-        # Compute grouped-wise rewards
-        mean_grouped_rewards = rewards.view(-1, self.num_generations).mean(dim=1)
-        std_grouped_rewards = rewards.view(-1, self.num_generations).std(dim=1)
+
+        
         max_grouped_rewards = rewards.view(-1, self.num_generations).max(dim=1).values
         min_grouped_rewards = rewards.view(-1, self.num_generations).min(dim=1).values
         # log the highest rewards in each group
         self._metrics["max_rewards"].append(max_grouped_rewards.mean().item())
         self._metrics["min_rewards"].append(min_grouped_rewards.mean().item())
         
-    
-        # Normalize the rewards to compute the advantages
+        
+        # Compute grouped-wise rewards
+        mean_grouped_rewards = rewards.view(-1, self.num_generations).mean(dim=1)
         mean_grouped_rewards = mean_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
-        std_grouped_rewards = std_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
-        advantages = (rewards - mean_grouped_rewards) / (std_grouped_rewards + 1e-4)
         
+        if self.global_var:
+            # Normalize the rewards to compute the advantages
+            std_rewards = rewards.std()
+            advantages = (rewards - mean_grouped_rewards) / (std_rewards + 1e-4)
+            
+            self._metrics["reward_std"].append(self.accelerator.gather_for_metrics(std_rewards).mean().item())
+
+        else:
+            # Normalize the rewards to compute the advantages
+            std_grouped_rewards = rewards.view(-1, self.num_generations).std(dim=1)
+            std_grouped_rewards = std_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
+            advantages = (rewards - mean_grouped_rewards) / (std_grouped_rewards + 1e-4)
         
+            self._metrics["reward_std"].append(self.accelerator.gather_for_metrics(std_grouped_rewards).mean().item())
+
         # print the completions with the max advantage in each group
         max_advantages_idx = advantages.view(-1, self.num_generations).argmax(dim=1)
         max_advantages_idx = max_advantages_idx + torch.arange(0, len(max_advantages_idx) * self.num_generations, self.num_generations, device=device)
@@ -713,7 +725,6 @@ class MiniCPMVGRPOTrainer(Trainer):
 
         self._metrics["reward"].append(self.accelerator.gather_for_metrics(rewards).mean().item())
 
-        self._metrics["reward_std"].append(self.accelerator.gather_for_metrics(std_grouped_rewards).mean().item())
 
         return {
             "prompt_ids": prompt_ids,

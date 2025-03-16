@@ -4,7 +4,7 @@ cd `dirname $0`
 
 export DEBUG_MODE="true"
 
-RUN_NAME="MiniCPM-V-1B6-GRPO-1120px-256s"
+RUN_NAME="MiniCPM-V-1B6-GRPO-1120px-32s-noKL"
 export LOG_PATH="./debug_log_$RUN_NAME.txt"
 export NCCL_P2P_LEVEL=NVL
 
@@ -19,9 +19,9 @@ WANDB_PROJECT=CPM-RFT CUDA_DEVICE_MAX_CONNECTIONS=1 UCX_NET_DEVICES=bond0 GLOO_S
     --max_prompt_length 2048 \
     --max_completion_length 64 \
     --max_line_res 1120 \
-    --num_generations 256 \
+    --num_generations 32 \
     --num_iterations 1 \
-    --per_device_train_batch_size 16 \
+    --per_device_train_batch_size 8 \
     --gradient_accumulation_steps 8 \
     --max_grad_norm 1.0 \
     --logging_steps 1 \
@@ -31,6 +31,7 @@ WANDB_PROJECT=CPM-RFT CUDA_DEVICE_MAX_CONNECTIONS=1 UCX_NET_DEVICES=bond0 GLOO_S
     --adam_beta2 0.99 \
     --lr_scheduler_type "cosine" \
     --bf16 \
+    --beta 0.0 \
     --data_seed 42 \
     --report_to wandb \
     --gradient_checkpointing true \

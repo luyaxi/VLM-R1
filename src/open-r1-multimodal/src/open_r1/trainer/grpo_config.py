@@ -270,6 +270,15 @@ class GRPOConfig(TrainingArguments):
             "rewards are weighted equally with weight `1.0`."
         },
     )
+    
+    global_var: Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": "Whether to use global variables for advantage computation. If set to `True`, the advantage "
+            "computation will be based on the global variables, which are shared across all groups."
+        },
+    )
+    
     sync_ref_model: bool = field(
         default=False,
         metadata={
