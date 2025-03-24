@@ -18,10 +18,10 @@ SCHEMA = {
     "additionalProperties": False,
     # "required": ["thought"],
     "properties": {
-        # "thought": {
-        #     "type": "string",
-        #     "description": "对当前任务的思考，用于描述当前操作的目的"
-        # },
+        "thought": {
+            "type": "string",
+            "description": "对当前任务的思考，用于描述当前操作的目的"
+        },
         "POINT": {
             "description": "点击屏幕上的指定位置",
             "$ref": "#/$defs/Location"
@@ -136,20 +136,35 @@ def load_and_validate_action(res:str,):
 
 global_executor = ProcessPoolExecutor(max_workers=8)
 
-def _action_schema_check(res:str):
+def _action_schema_check(res:str,solution: dict):
     try:
         action:dict = load_and_validate_action(res)
+        
+        score_penalty = 0.0
+        if "thought" in action or res.startswith("//") or res.startswith("/*"):
+            score_penalty -= 0.1
+        action_keys = set(action.keys())
+        solution_keys = set(solution.keys())
+        if "thought" in action_keys:
+            action_keys.remove("thought")
+        if "thought" in solution_keys:
+            solution_keys.remove("thought")
+        
+        if action_keys - solution_keys:
+            score_penalty += len(action_keys - solution_keys)*0.3
+        
         if "```json" in res:
-            return 0.5
-        return 1.0
+            score_penalty += 0.3
+        
+        return min(max(1.0 - score_penalty,0.1),1.0)
     except jsonschema.ValidationError as e:
-        return 0.3
+        return 0.1
     except Exception as e:
         return 0.0
 
-def action_schema_check(completions, **kwargs):
+def action_schema_check(completions, solution: list[dict],**kwargs):
     global global_executor
-    futures = [global_executor.submit(_action_schema_check,completion[0]["content"],) for completion in completions]
+    futures = [global_executor.submit(_action_schema_check,completion[0]["content"],sol) for completion,sol in zip(completions,solution)]
     scores = []
     for future in futures:
         try:
@@ -160,83 +175,11 @@ def action_schema_check(completions, **kwargs):
 
     return scores
 
-def _action_type_check(res:str, solution: dict):
-    try:
-        action = load_and_validate_action(res)
-        action_keys = set(action.keys())
-        solution_keys = set(solution.keys())
-        if "thought" in action_keys:
-            action_keys.remove("thought")
-        if "thought" in solution_keys:
-            solution_keys.remove("thought")
-        
-        if len(action_keys) == 0:
-            return -0.5
-        
-        jaccard_index = len(action_keys & solution_keys) / len(solution_keys.union(action_keys))
-        # if jaccard_index < 1:
-            # print("Mismatched keys in action, Expected: ", solution_keys, " Got: ", action_keys)
-        score = jaccard_index
-        # score = 0.0
-        
-        # if solution_keys & action_keys != solution_keys:
-        #     print("Missing keys in action, Expected: ", solution_keys, " Got: ", action_keys)
-        #     score = len(solution_keys & action_keys) / len(solution_keys)
-        
-        # if action_keys - solution_keys:
-        #     print("Unexpected keys in action, Expected: ", solution_keys, " Got: ", action_keys)
-        #     # punish for unexpected keys
-        #     score -= 0.5 * len(action_keys - solution_keys) / len(action_keys)
-        
-        score = max(0,score)
-        
-        if "```json" in res:
-            return score * 0.95
-        return score
-    except jsonschema.ValidationError as e:
-        return -0.5
-    except Exception as e:
-        return -1
-    
-
-def action_type_check(completions, solution: list[dict], **kwargs):
-    global global_executor
-    futures = [global_executor.submit(_action_type_check,completion[0]["content"],sol) for completion,sol in zip(completions,solution)]
-    scores = []
-    for future in futures:
-        try:
-            scores.append(future.result(timeout=5)*0.3)
-        except TimeoutError as e:
-            print("Timeout while checking type.")
-            scores.append(0.0)
-
-    return scores
-
 def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
     try:
         action = load_and_validate_action(res)
-        if not (res.startswith("//") or res.startswith("/*")):
-            raise Exception("No thought found.")
     except Exception as e:
-        return -2
-
-    action_keys = set(action.keys())
-    solution_keys = set(solution.keys())
-    if "thought" in action_keys:
-        action_keys.remove("thought")
-    if "thought" in solution_keys:
-        solution_keys.remove("thought")
-    
-    score_penalty = 0.0
-    
-    if action_keys - solution_keys:
-        # print("Unexpected keys in action, Expected: ", solution_keys, " Got: ", action_keys)
-        score_penalty += len(action_keys - solution_keys)*0.3
-    
-    if '```json' in res:
-        if '```json' in res[:20]:
-            score_penalty += 0.1
-        score_penalty += 0.1
+        return -1
     
     sub_scores = []
     
@@ -264,12 +207,14 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
                 
             case "to":
                 if isinstance(solution[k], list):
+                    # point direction
                     if isinstance(action[k],list):
                         sub_score += calculate_dist_score(action[k], solution[k], reso, bbox[1])
                     else:
                         print(f"Invalid to for direction {solution[k]}: ", action[k])
                     
                 else:
+                    # text direction
                     if isinstance(action[k],list):
                         print(f"Invalid to for direction {solution[k]}: ", action[k])
                     else:
@@ -292,12 +237,12 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
                         pass
                         # print("Required ", solution[k], ", got: ", action[k])
                         
-        sub_scores.append(sub_score)
+        sub_scores.append(max(min(sub_score,1.0),0.0))
     if not sub_scores:
         print("No args to check.")
         return 0.0
     else:
-        return (sum(sub_scores) / len(sub_scores)) - score_penalty
+        return (sum(sub_scores) / len(sub_scores))
     
 
 def action_args_check(completions, solution: list[dict], resolution, bboxs,**kwargs):
@@ -337,7 +282,7 @@ def calculate_dist_score(pred_loc: list[list[int,int]], gt_loc: list[int,int], r
     
     if bbox is None or not isinstance(bbox, list):
         # print("No bbox provided.")
-        return - calculate_manhattan_distance(x_ratio, y_ratio, gt_x_ratio, gt_y_ratio) / 2
+        return calculate_manhattan_distance(x_ratio, y_ratio, gt_x_ratio, gt_y_ratio) / 2
     
     else:
         left_top = bbox[0]
@@ -350,7 +295,7 @@ def calculate_dist_score(pred_loc: list[list[int,int]], gt_loc: list[int,int], r
             dist_score += 0.1 * ((1 - max_delta / 1000)**3)
         else:
             # print(f"Point {(x_ratio,y_ratio)} {[abs_x,abs_y]} out of Bbox {[left_top, right_bottom]}, GT: {(gt_x_ratio,gt_y_ratio)} {[gt_abs_x,gt_abs_y]}")
-            dist_score = - calculate_manhattan_distance(x_ratio, y_ratio, gt_x_ratio, gt_y_ratio) / 2
+            dist_score = max(calculate_manhattan_distance(x_ratio, y_ratio, gt_x_ratio, gt_y_ratio) / 2,0.8)
     
     return dist_score
     
@@ -495,7 +440,10 @@ class GUIRFTDataset(Dataset):
         
         for img_id,img_file in item["image"].items():
             try:
-                origin_img = Image.open(os.path.join(self.image_root,img_file.replace("/home/test/test03/lyx/check_gui_data-filter_similar/",""))).convert("RGB")
+                if os.path.exists(img_file):
+                    origin_img = Image.open(img_file).convert("RGB")
+                else:
+                    origin_img = Image.open(os.path.join(self.image_root,img_file)).convert("RGB")
             except:
                 print("Error while loading image: ", img_file)
                 return self[random.randint(0,len(self.data)-1)]
@@ -528,26 +476,26 @@ class GUIRFTDataset(Dataset):
             return [random.randint(0,1000),random.randint(0,1000)]
         
         conv.append({"role":"system","content":random.choice(SYSTEM_PROMPTS)})
-        conv.append({"role": "user", "content": '\n'.join([
-                "以下是一些示例操作，您可以参考这些示例来生成您的操作指令：",
-                "1. 点击屏幕上的指定位置",
-                '{"POINT":'+str(get_random_coordinate())+'}',
-                "2. 向上滑动",
-                '{"POINT":'+str(get_random_coordinate())+',"to":"up"}',
-                "3. 触发特殊按键",
-                '{"PRESS":"HOME"}',
-                "4. 向设备键入文本",
-                '{"TYPE":"你好"}',
-                "5. 结束任务",
-                '{"STATUS":"finish"}'
-                "6. 组合手势参数",
-                '{"POINT":'+str(get_random_coordinate())+',"duration":3000}'
-                "7. 等待响应",
-                '{"duration":3000}',
-                "",
-                "你必须将思考过程写在注释中，以便我们了解你的思考过程。当你准备好后，请输出继续的操作指令。"
-            ]),})
-        conv.append({"role": "assistant", "content": '/* 了解，我需要在注释中进行批判性思考后以JSON格式输出操作指令。\n我应该先分析给定观察后再思考如何解决当前用户问题。\n目前只是测试我是否能遵循格式，我需要直接输出继续任务的指令 */\n{"STATUS":"continue"}'})
+        # conv.append({"role": "user", "content": '\n'.join([
+        #         "以下是一些示例操作，您可以参考这些示例来生成您的操作指令：",
+        #         "1. 点击屏幕上的指定位置",
+        #         '{"POINT":'+str(get_random_coordinate())+'}',
+        #         "2. 向上滑动",
+        #         '{"POINT":'+str(get_random_coordinate())+',"to":"up"}',
+        #         "3. 触发特殊按键",
+        #         '{"PRESS":"HOME"}',
+        #         "4. 向设备键入文本",
+        #         '{"TYPE":"你好"}',
+        #         "5. 结束任务",
+        #         '{"STATUS":"finish"}'
+        #         "6. 组合手势参数",
+        #         '{"POINT":'+str(get_random_coordinate())+',"duration":3000}'
+        #         "7. 等待响应",
+        #         '{"duration":3000}',
+        #         "",
+        #         "你必须将思考过程写在注释中，以便我们了解你的思考过程。当你准备好后，请输出继续的操作指令。"
+        #     ]),})
+        # conv.append({"role": "assistant", "content": '/* 了解，我需要在注释中进行批判性思考后以JSON格式输出操作指令。\n我应该先分析给定观察后再思考如何解决当前用户问题。\n目前只是测试我是否能遵循格式，我需要直接输出继续任务的指令 */\n{"STATUS":"continue"}'})
         conv.append({"role": "user", "content": [
             img, 
             f"图像分辨率: {str(img.size)}\n问题：{user_query}"
@@ -570,7 +518,6 @@ f"""# Role
 思考，理解用户意图，并根据输入的当前屏幕截图等信息输出下一步的动作
 
 # Rule
-- 总是在**块/行注释中**描述你进行下一步操作的原因
 - 每轮参考 Example Output，以紧凑JSON格式输出**一个**操作
 - 输出的动作必须遵循动作空间Schema约束
 
@@ -584,7 +531,6 @@ f"""# 身份设定
 解析视觉信息与用户需求，通过多维度推理生成界面交互指令
 
 # 约束条件
-- 操作依据必须写在/*注释区*/或//行注释
 - 每次仅生成符合规范的单操作JSON
 - 严格匹配下方操作模板结构
 
@@ -598,7 +544,6 @@ f"""# 角色定位
 基于屏幕信息流分析，输出最优操作序列节点
 
 # 规范说明
-■ 决策日志必须通过注释形式呈现
 ■ 单次响应只允许包含一个标准动作
 ■ 严格遵守动作参数架构
 
@@ -614,7 +559,6 @@ f"""# 角色定位
 3. 生成合规操作
 
 ## 硬性要求
-- 所有决策依据需以注释说明
 - 输出严格遵循JSON schema
 - 保持原子化操作（单动作）
 
@@ -625,9 +569,8 @@ f"""# 角色定位
 // 使命：将视觉输入转化为精确操作
 
 '''操作准则'''
-1. 注释说明每个动作的决策逻辑
-2. 单次仅输出一个规范JSON对象
-3. 严格匹配操作数据格式
+1. 单次仅输出一个规范JSON对象
+2. 严格匹配操作数据格式
 
 '''动作格式规范'''
 """ + compact_json_dumps(SCHEMA),
@@ -640,9 +583,8 @@ f"""🤖 智能体类型：界面操作生成器
 - 生成机械可执行指令
 
 🚦 约束条件：
-① 注释必须前置说明
-② 每次仅响应单步操作
-③ 符合预定义指令格式
+① 每次仅响应单步操作
+② 符合预定义指令格式
 
 📜 指令格式手册：
 """ + compact_json_dumps(SCHEMA),
@@ -652,9 +594,8 @@ f"""🤖 智能体类型：界面操作生成器
 版本：交互协议
 
 <EXECUTION_POLICY>
-1. 注释字段记录决策路径
-2. 单命令输出原则
-3. 严格模式：schema验证
+1. 单命令输出原则
+2. 严格模式：schema验证
 
 <ACTION_SCHEMA>
 """ + compact_json_dumps(SCHEMA),
@@ -667,9 +608,8 @@ f"""%% 数字操作员系统配置 %%
 - 操作编码器
 
 :: 输出协议 ::
-1. 决策树注释（必需）
-2. 原子化操作输出
-3. 符合API规范
+1. 原子化操作输出
+2. 符合API规范
 
 :: 操作API文档 ::
 """ + compact_json_dumps(SCHEMA),
@@ -683,7 +623,6 @@ f"""# 角色档案
 - 指令序列化
 
 ▲ 输出规范
-⚠ 注释必须解释动作依据
 ⚠ 单步操作原则
 ⚠ 严格类型检查
 
@@ -699,7 +638,6 @@ f"""|| 系统角色 ||
 ③ 格式合规检查
 
 || 硬性约束 ||
-- 注释说明逻辑（强制的）
 - 单指令输出模式
 - 通过schema验证
 
@@ -712,13 +650,11 @@ f"""⚙️ 机器角色：界面操作编译器
 将视觉信号转化为可执行代码
 
 ✧ 编译规则
-1. 必须包含决策日志（注释形式）
-2. 单语句输出原则
-3. 类型安全验证
+1. 单语句输出原则
+2. 类型安全验证
 
 ✶ 指令语法
 """ + compact_json_dumps(SCHEMA),
-
 ]
 
 
