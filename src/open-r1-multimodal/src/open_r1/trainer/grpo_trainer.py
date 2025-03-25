@@ -265,6 +265,7 @@ class MiniCPMVGRPOTrainer(Trainer):
 
         # Enable gradient checkpointing if requested
         if args.gradient_checkpointing:
+            self.gradient_checkpointing = args.gradient_checkpointing
             model = self._enable_gradient_checkpointing(model, args)
 
         # Reference model
@@ -436,6 +437,27 @@ class MiniCPMVGRPOTrainer(Trainer):
 
         return model
     
+    def _disable_gradient_checkpointing(self, model: PreTrainedModel, args: GRPOConfig) -> PreTrainedModel:
+        """Disables gradient checkpointing for the model."""
+        # Disable gradient checkpointing on the base model for PEFT
+        if is_peft_model(model):
+            model.base_model.gradient_checkpointing_disable()
+        # Disable gradient checkpointing for non-PEFT models
+        else:
+            model.gradient_checkpointing_disable()
+
+        gradient_checkpointing_kwargs = args.gradient_checkpointing_kwargs or {}
+        use_reentrant = (
+            "use_reentrant" not in gradient_checkpointing_kwargs or gradient_checkpointing_kwargs["use_reentrant"]
+        )
+
+        if use_reentrant:
+            model.disable_input_require_grads()
+        
+        # Ensure use_cache is enabled
+        model.config.use_cache = True
+        return model
+    
     def _set_signature_columns_if_needed(self):
         # If `self.args.remove_unused_columns` is True, non-signature columns are removed.
         # By default, this method sets `self._signature_columns` to the model's expected inputs.
@@ -555,7 +577,7 @@ class MiniCPMVGRPOTrainer(Trainer):
         # Generate completions
         with unwrap_model_for_generation(model, self.accelerator, gather_deepspeed3_params=self.gather_deepspeed3_params) as unwrapped_model:
             # prompt_completion_ids = unwrapped_model.generate(**prompt_inputs, generation_config=self.generation_config)
-            
+            unwrapped_model = self._disable_gradient_checkpointing(unwrapped_model, self.args)
             completion_ids = unwrapped_model.generate(
                 **prompt_inputs,
                 tokenizer=self.processing_class.tokenizer,
@@ -571,8 +593,11 @@ class MiniCPMVGRPOTrainer(Trainer):
                 max_new_tokens = self.max_completion_length,
                 # return_dict_in_generate=True,
                 # output_logits = True,
+                use_cache=True,
                 synced_gpus=True
             )
+            if self.gradient_checkpointing:
+                unwrapped_model = self._enable_gradient_checkpointing(unwrapped_model, self.args)
             # print(prompt_ids,self.num_generations,completion_ids)
             if isinstance(completion_ids, tuple):
                 # print(completion_ids[1].keys())

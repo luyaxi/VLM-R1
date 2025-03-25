@@ -229,7 +229,9 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
         solution_keys.remove("thought")
     
     if action_keys - solution_keys:
-        score_penalty += len(action_keys - solution_keys)*0.3
+        score_penalty += len(action_keys - solution_keys)*0.1
+    if solution_keys - action_keys:
+        score_penalty += len(solution_keys - action_keys)*0.1
     
     if '```json' in res:
         if '```json' in res[:20]:
