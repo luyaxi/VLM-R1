@@ -16,12 +16,12 @@ SCHEMA = {
     "type": "object",
     "description": "可用的动作和参数",
     "additionalProperties": False,
-    # "required": ["thought"],
+    # "required": ["think"],
     "properties": {
-        # "thought": {
-        #     "type": "string",
-        #     "description": "对当前任务的思考，用于描述当前操作的目的"
-        # },
+        "think": {
+            "type": "string",
+            "description": "对当前任务的思考，用于描述当前操作的目的"
+        },
         "POINT": {
             "description": "点击屏幕上的指定位置",
             "$ref": "#/$defs/Location"
@@ -163,38 +163,27 @@ def action_schema_check(completions, **kwargs):
 def _action_type_check(res:str, solution: dict):
     try:
         action = load_and_validate_action(res)
+        if not ("think" in action or res.startswith("//") or res.startswith("/*")):
+            raise Exception("No think.")
         action_keys = set(action.keys())
         solution_keys = set(solution.keys())
-        if "thought" in action_keys:
-            action_keys.remove("thought")
-        if "thought" in solution_keys:
-            solution_keys.remove("thought")
+        if "think" in action_keys:
+            action_keys.remove("think")
+        if "think" in solution_keys:
+            solution_keys.remove("think")
         
-        if len(action_keys) == 0:
-            return -0.5
-        
-        jaccard_index = len(action_keys & solution_keys) / len(solution_keys.union(action_keys))
+        # jaccard_index = len(action_keys & solution_keys) / len(solution_keys.union(action_keys))
         # if jaccard_index < 1:
             # print("Mismatched keys in action, Expected: ", solution_keys, " Got: ", action_keys)
-        score = jaccard_index
-        # score = 0.0
+        # score = jaccard_index
+        # score = max(0,score)
         
-        # if solution_keys & action_keys != solution_keys:
-        #     print("Missing keys in action, Expected: ", solution_keys, " Got: ", action_keys)
-        #     score = len(solution_keys & action_keys) / len(solution_keys)
-        
-        # if action_keys - solution_keys:
-        #     print("Unexpected keys in action, Expected: ", solution_keys, " Got: ", action_keys)
-        #     # punish for unexpected keys
-        #     score -= 0.5 * len(action_keys - solution_keys) / len(action_keys)
-        
-        score = max(0,score)
+        score = len(action_keys & solution_keys)  == len(solution_keys.union(action_keys))
         
         if "```json" in res:
-            return score * 0.95
+            return score * 0.9
         return score
-    except jsonschema.ValidationError as e:
-        return -0.5
+    
     except Exception as e:
         return -1
     
@@ -205,7 +194,7 @@ def action_type_check(completions, solution: list[dict], **kwargs):
     scores = []
     for future in futures:
         try:
-            scores.append(future.result(timeout=5)*0.3)
+            scores.append(future.result(timeout=5))
         except TimeoutError as e:
             print("Timeout while checking type.")
             scores.append(0.0)
@@ -215,33 +204,31 @@ def action_type_check(completions, solution: list[dict], **kwargs):
 def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
     try:
         action = load_and_validate_action(res)
-        if not ("thought" in action or res.startswith("//") or res.startswith("/*")):
-            raise Exception("No thought.")
+        # if '```json' in res:
+        #     raise Exception("Invalid format")
+        
+        if not ("think" in action or "//" in res or ("/*" in res and '*/' in res)):
+            raise Exception("No think.")
+
+        action_keys = set(action.keys())
+        solution_keys = set(solution.keys())
+        if "think" in action_keys:
+            action_keys.remove("think")
+        if "think" in solution_keys:
+            solution_keys.remove("think")
+            
+        if len(action_keys & solution_keys) != len(solution_keys.union(action_keys)):
+            return -0.8
+    except jsonschema.ValidationError as e:
+        return -0.95 
     except Exception as e:
         return -1
 
     score_penalty = 0.0
-    action_keys = set(action.keys())
-    solution_keys = set(solution.keys())
-    if "thought" in action_keys:
-        action_keys.remove("thought")
-    if "thought" in solution_keys:
-        solution_keys.remove("thought")
-    
-    if action_keys - solution_keys:
-        score_penalty += len(action_keys - solution_keys)*0.1
-    if solution_keys - action_keys:
-        score_penalty += len(solution_keys - action_keys)*0.1
-    
-    if '```json' in res:
-        if '```json' in res[:20]:
-            score_penalty += 0.1
-        score_penalty += 0.1
-    
     sub_scores = []
     
     for k in solution.keys():
-        if k == "thought":
+        if k == "think":
             continue
         if k not in action:
             sub_scores.append(-1)
@@ -255,6 +242,7 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
                 if action[k] > 150 or action[k] <= 5000:
                     sub_score += 1.0
                 else:
+                    sub_score -= 1.0
                     print("Invalid duration: ", action[k])
             
             case "TYPE":
@@ -268,16 +256,19 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
                     if isinstance(action[k],list):
                         sub_score += calculate_dist_score(action[k], solution[k], reso, bbox[1])
                     else:
+                        sub_score -= 1.0
                         print(f"Invalid to for direction {solution[k]}: ", action[k])
                     
                 else:
                     # text direction
                     if isinstance(action[k],list):
+                        sub_score -= 1.0
                         print(f"Invalid to for direction {solution[k]}: ", action[k])
                     else:
                         if action[k] == solution[k]:
                             sub_score += 1.0
                         else:
+                            sub_score -= 1.0
                             print("Invalid to: ", action[k])
             
             case _:
@@ -285,13 +276,13 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
                     if action[k] is None:
                         sub_score += 1.0
                     else:
-                        pass
+                        sub_score -= 1.0
                         # print("Required ", solution[k], ", got: ", action[k])
                 else:
                     if action[k] == solution[k]:
                         sub_score += 1.0
                     else:
-                        pass
+                        sub_score -= 1.0
                         # print("Required ", solution[k], ", got: ", action[k])
                         
         sub_scores.append(sub_score)
@@ -299,7 +290,7 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
         print("No args to check.")
         return 0.0
     else:
-        return max((sum(sub_scores) / len(sub_scores)) - score_penalty,-0.9)
+        return max(sum(sub_scores) / len(sub_scores),-0.8)
     
 
 def action_args_check(completions, solution: list[dict], resolution, bboxs,**kwargs):
@@ -340,24 +331,28 @@ def calculate_dist_score(pred_loc: list[list[int,int]], gt_loc: list[int,int], r
     if bbox is None or not isinstance(bbox, list):
         # print("No bbox provided.")
         # let assume the bbox is 1%x1% windows
-        if (gt_x_ratio - 1e-2) <= x_ratio <= (gt_x_ratio + 1e-2) and (gt_y_ratio - 1e-2) <= y_ratio <= (gt_y_ratio + 1e-2):
-            return 1.0
-        elif (gt_x_ratio - 5e-2) <= x_ratio <= (gt_x_ratio + 5e-2) and (gt_y_ratio - 5e-2) <= y_ratio <= (gt_y_ratio + 5e-2):
-            return 0.5
+        if ((gt_x_ratio - 1e-2) <= x_ratio <= (gt_x_ratio + 1e-2)) and ((gt_y_ratio - 1e-2) <= y_ratio <= (gt_y_ratio + 1e-2)):
+            dist_score =  1.0
+        elif ((gt_x_ratio - 1e-1) <= x_ratio <= (gt_x_ratio + 1e-1)) and ((gt_y_ratio - 1e-1) <= y_ratio <= (gt_y_ratio + 1e-1)):
+            dist_score =  0.3
         else:
-            return - calculate_manhattan_distance(x_ratio, y_ratio, gt_x_ratio, gt_y_ratio) / 2
+            # dist_score = -1
+            dist_score = - calculate_manhattan_distance(x_ratio, y_ratio, gt_x_ratio, gt_y_ratio) / 2
     
     else:
         left_top = bbox[0]
         right_bottom = bbox[1]
         
-        if left_top[0] <= abs_x <= right_bottom[0] and left_top[1] <= abs_y <= right_bottom[1]:
+        if (left_top[0] <= abs_x <= right_bottom[0]) and (left_top[1] <= abs_y <= right_bottom[1]):
             dist_score = 0.9
             # remain 0.1 for centering
             max_delta = max(abs(abs_x - (left_top[0] + right_bottom[0]) / 2), abs(abs_y - (left_top[1] + right_bottom[1]) / 2))
             dist_score += 0.1 * ((1 - max_delta / 1000)**3)
+        elif ((left_top[0] - 0.1*origin_w) <= abs_x <= (right_bottom[0] + 0.1*origin_w )) and ((left_top[1] -0.1*origin_h) <= abs_y <= right_bottom[1] + 0.1*origin_h):
+            dist_score = 0.3
         else:
             # print(f"Point {(x_ratio,y_ratio)} {[abs_x,abs_y]} out of Bbox {[left_top, right_bottom]}, GT: {(gt_x_ratio,gt_y_ratio)} {[gt_abs_x,gt_abs_y]}")
+            # dist_score = -1
             dist_score = - calculate_manhattan_distance(x_ratio, y_ratio, gt_x_ratio, gt_y_ratio) / 2
     
     return dist_score
@@ -501,6 +496,20 @@ class GUIRFTDataset(Dataset):
     def __getitem__(self, index):
         item = self.data[index]
         
+        try:
+            # process the conversation
+            user_query = item["conversations"][-2]["content"]
+            user_query = re.match(r"<Question>(.*?)</Question>", user_query).group(1)
+            action = json.loads(item["conversations"][-1]['content'])
+        except:
+            print("Error while processing conversation.")
+            return self[random.randint(0,len(self.data)-1)]
+        
+        # if list(action.keys()) == ["POINT"]:
+        #     # We should skip this case randomly
+        #     if random.random() < 0.5:
+        #         return self[random.randint(0,len(self.data)-1)]
+        
         for img_id,img_file in item["image"].items():
             try:
                 if os.path.exists(img_file):
@@ -525,21 +534,12 @@ class GUIRFTDataset(Dataset):
             resolution = (origin_img.size, img.size)
             break
         
-        try:
-            # process the conversation
-            user_query = item["conversations"][-2]["content"]
-            user_query = re.match(r"<Question>(.*?)</Question>", user_query).group(1)
-            action = json.loads(item["conversations"][-1]['content'])
-        except:
-            print("Error while processing conversation.")
-            return self[random.randint(0,len(self.data)-1)]
         conv = []
         
         def get_random_coordinate():
             return [random.randint(0,1000),random.randint(0,1000)]
         
         conv.append({"role":"system","content":random.choice(SYSTEM_PROMPTS)})
-        # conv.append({"role":"system","content":SFT_PROMPT})
         conv.append({"role": "user", "content": '\n'.join([
                 "以下是一些示例操作，您可以参考这些示例来生成您的操作指令：",
                 "1. 点击屏幕上的指定位置",
@@ -564,9 +564,9 @@ class GUIRFTDataset(Dataset):
                 '// 当前界面正在加载，请等待',
                 '{"duration":3000}',
                 "",
-                "你必须将思考过程写在注释中，以便我们了解你的思考过程。当你准备好后，请输出继续的操作指令。"
+                "你可以将思考过程写在注释中，以便我们了解你的思考过程。当你准备好后，请输出继续的操作指令。"
             ]),})
-        conv.append({"role": "assistant", "content": '/* 了解，我需要在注释中进行批判性思考后以JSON格式输出操作指令。\n目前只是测试我是否能遵循格式，我需要直接输出继续任务的指令 */\n{"STATUS":"continue"}'})
+        conv.append({"role": "assistant", "content": '// 了解，我需要在注释中进行批判性思考后以JSON格式输出操作指令。\n// 目前只是测试我是否能遵循格式，我需要直接输出继续任务的指令\n{"STATUS":"continue"}'})
         conv.append({"role": "user", "content": [
             f"<Question>{user_query}</Question>\n当前屏幕截图：",
             img, 
