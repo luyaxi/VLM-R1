@@ -218,7 +218,10 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
             solution_keys.remove("think")
             
         if len(action_keys & solution_keys) != len(solution_keys.union(action_keys)):
-            return -0.8
+            recall = len(action_keys & solution_keys) / len(solution_keys)
+            # rescale to -0.95 to -0.8
+            return -0.95 + (recall * 0.15)
+            
     except jsonschema.ValidationError as e:
         return -0.95 
     except Exception as e:
@@ -566,7 +569,7 @@ class GUIRFTDataset(Dataset):
                 "",
                 "你可以将思考过程写在注释中，以便我们了解你的思考过程。当你准备好后，请输出继续的操作指令。"
             ]),})
-        conv.append({"role": "assistant", "content": '// 了解，我需要在注释中进行批判性思考后以JSON格式输出操作指令。\n// 目前只是测试我是否能遵循格式，我需要直接输出继续任务的指令\n{"STATUS":"continue"}'})
+        conv.append({"role": "assistant", "content": '/* 了解，我需要在注释中进行批判性思考后以JSON格式输出操作指令。目前只是测试我是否能遵循格式，我需要直接输出继续任务的指令*/\n{}'})
         conv.append({"role": "user", "content": [
             f"<Question>{user_query}</Question>\n当前屏幕截图：",
             img, 

@@ -3,7 +3,7 @@
 source ~/miniconda3/bin/activate vcpm
 cd `dirname $0`
 
-RUN_NAME="MiniCPM-26o-GRPO-1120px-4s-lr-noKL-hardscore-schema"
+RUN_NAME="MiniCPM-26o-GRPO-1120px-8s-hardscore-schema"
 
 # RUN_NAME="MiniCPMV-HW-THOUGHT-7B-GRPO-1120px-8s-lr"
 # RUN_NAME="MiniCPMV-HW-E-THOUGHT-7B-GRPO-1120px-8s-lr"
@@ -17,18 +17,19 @@ TOKENIZERS_PARALLELISM=false CUDA_DEVICE_MAX_CONNECTIONS=1 UCX_NET_DEVICES=bond0
     --model_name_or_path /share_data/data1/models/MiniCPM-o-2_6-hg \
     --dataset_name /share_data/data1/GUIData/filtered_aitw_mb_ac.jsonl \
     --max_prompt_length 2048 \
-    --max_completion_length 160 \
+    --max_completion_length 96 \
     --max_line_res 1120 \
-    --num_generations 4 \
+    --num_generations 8 \
     --num_iterations 1 \
-    --per_device_train_batch_size 4 \
+    --per_device_train_batch_size 8 \
     --gradient_accumulation_steps 4 \
     --dataloader_prefetch_factor 12 --dataloader_num_workers 32 \
     --max_grad_norm 1.0 \
     --logging_steps 1 \
-    --learning_rate 3e-7 \
+    --learning_rate 1e-6 \
     --warmup_steps 10 \
-    --weight_decay 0.01 \
+    --weight_decay 0.1 \
+    --adam_beta2 0.99 \
     --global_var false \
     --lr_scheduler_type "constant" \
     --tune_vision true \
