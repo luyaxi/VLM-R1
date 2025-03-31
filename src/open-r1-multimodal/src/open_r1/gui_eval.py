@@ -227,10 +227,10 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
             print("Type Missing: {} -> {}".format(str(action_keys),str(solution_keys)))
         #     return -0.95 + (recall * 0.15)
 
-        if '```json' in res or not ("thought" in action or "think" in action or res.startswith("//")  or (res.startswith("/*") and '*/' in res)):
-            return -0.95
+        if not ("thought" in action or "think" in action or res.startswith("//")  or (res.startswith("/*") and '*/' in res)):
+            return -1
     except jsonschema.ValidationError as e:
-        return -0.95 
+        return -1
     except Exception as e:
         return -1
 
@@ -239,6 +239,9 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
     if extra_keys:
         score_penalty += 0.3 * (len(extra_keys) / len(action_keys))
         print("Extra keys in action: ", extra_keys)
+        
+    if '```json' in res:
+        score_penalty += 0.1
     sub_scores = []
     
     for k in solution.keys():
@@ -304,7 +307,7 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
         print("No args to check.")
         return 0.0
     else:
-        return max(sum(sub_scores) / len(sub_scores) - score_penalty,-0.95)
+        return max(sum(sub_scores) / len(sub_scores) - score_penalty,-0.9)
     
 
 def action_args_check(completions, solution: list[dict], resolution, bboxs,**kwargs):
@@ -520,10 +523,10 @@ class GUIRFTDataset(Dataset):
             print("Error while processing conversation.")
             return self[random.randint(0,len(self.data)-1)]
         
-        # if list(action.keys()) == ["POINT"]:
-        #     # We should skip this case randomly
-        #     if random.random() < 0.5:
-        #         return self[random.randint(0,len(self.data)-1)]
+        if list(action.keys()) == ["POINT"]:
+            # We should skip this case randomly
+            if random.random() < 0.5:
+                return self[random.randint(0,len(self.data)-1)]
         
         for img_id,img_file in item["image"].items():
             try:
@@ -580,12 +583,12 @@ class GUIRFTDataset(Dataset):
                 '// 当前界面正在加载，请等待',
                 '{"duration":3000}',
                 "",
-                "你需要将思考过程写在注释中，以便我们了解你的思考过程。当你准备好后，请输出继续的操作指令。"
+                "你必须将思考过程写在注释中，以便我们了解你的思考过程。当你准备好后，请输出继续的操作指令。"
             ]),})
         # conv.append({"role": "user", "content": '\n'.join([
         #     "你可以将思考过程写在注释中，以便我们了解你的思考过程。当你准备好后，请输出继续的操作指令。"
         # ])})
-        conv.append({"role": "assistant", "content": '/* 了解，我需要在注释中进行批判性思考后以JSON格式输出操作指令。目前只是测试我是否能遵循格式，我需要直接输出继续任务的指令*/\n{}'})
+        conv.append({"role": "assistant", "content": '// 了解，我需要在注释中进行批判性思考后以JSON格式输出操作指令。目前只是测试我是否能遵循格式，我需要直接输出继续任务的指令\n{}'})
         conv.append({"role": "user", "content": [
             f"<Question>{user_query}</Question>\n当前屏幕截图：",
             img, 

@@ -3,7 +3,7 @@
 source ~/miniconda3/bin/activate vcpm
 cd `dirname $0`
 
-RUN_NAME="MiniCPM-26o-GRPO-1120px-4s-noKL"
+RUN_NAME="MiniCPM-26o-GRPO-1120px-4s-noKL-balance"
 
 # RUN_NAME="MiniCPMV-HW-THOUGHT-7B-GRPO-1120px-8s-lr"
 # RUN_NAME="MiniCPMV-HW-E-THOUGHT-7B-GRPO-1120px-8s-lr"
