@@ -223,7 +223,8 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
             action_keys.remove("thought")
         if "thought" in solution_keys:
             solution_keys.remove("thought")
-            
+        if len(action_keys) == 0 and solution.get("STATUS","") != "continue":
+            return -1
         if len(action_keys & solution_keys) != len(solution_keys.union(action_keys)):
         #     recall = len(action_keys & solution_keys) / len(solution_keys)
         #     # rescale to -0.95 to -0.8
