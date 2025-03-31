@@ -26,7 +26,7 @@ TOKENIZERS_PARALLELISM=false CUDA_DEVICE_MAX_CONNECTIONS=1 UCX_NET_DEVICES=bond0
     --dataloader_prefetch_factor 12 --dataloader_num_workers 32 \
     --max_grad_norm 1.0 \
     --logging_steps 1 \
-    --learning_rate 1e-7 \
+    --learning_rate 1e-6 \
     --warmup_steps 10 \
     --weight_decay 0.1 \
     --adam_beta2 0.99 \
