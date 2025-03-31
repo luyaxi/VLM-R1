@@ -17,13 +17,13 @@ SCHEMA = {
     "description": "可用的动作和参数",
     "additionalProperties": False,
     # "required": ["think"],
-    "required": ["thought"],
+    # "required": ["thought"],
     "properties": {
         # "think": {
-        "thought":{
-            "type": "string",
-            "description": "对当前任务的思考，用于描述当前操作的目的"
-        },
+        # "thought":{
+        #     "type": "string",
+        #     "description": "对当前任务的思考，用于描述当前操作的目的"
+        # },
         "POINT": {
             "description": "点击屏幕上的指定位置",
             "$ref": "#/$defs/Location"
@@ -551,35 +551,38 @@ class GUIRFTDataset(Dataset):
         def get_random_coordinate():
             return [random.randint(0,1000),random.randint(0,1000)]
         
-        conv.append({"role":"system","content":SFT_PROMPT})
-        # conv.append({"role":"system","content":random.choice(SYSTEM_PROMPTS)})
+        # conv.append({"role":"system","content":SFT_PROMPT})
+        conv.append({"role":"system","content":random.choice(SYSTEM_PROMPTS)})
+        conv.append({"role": "user", "content": '\n'.join([
+                "以下是一些示例操作，您可以参考这些示例来生成您的操作指令：",
+                "1. 点击屏幕上的指定位置",
+                '// 当前为桌面，需要打开xx软件',
+                '{"POINT":'+str(get_random_coordinate())+'}',
+                "2. 向上滑动",
+                '// 当前界面未找到关键字，需要继续滑动',
+                '{"POINT":'+str(get_random_coordinate())+',"to":"up"}',
+                "3. 触发特殊按键",
+                '// 需要先退回到桌面',
+                '{"PRESS":"HOME"}',
+                "4. 向设备键入文本",
+                '/* 可以向聊天栏键入文本进行回复 */',
+                '{"TYPE":"你好"}',
+                "5. 结束任务",
+                '// 任务已完成',
+                '{"STATUS":"finish"}',
+                "6. 组合手势参数",
+                '// 需要长按以删除',
+                '{"POINT":'+str(get_random_coordinate())+',"duration":3000}',
+                "7. 等待响应",
+                '// 当前界面正在加载，请等待',
+                '{"duration":3000}',
+                "",
+                "你可以将思考过程写在注释中，以便我们了解你的思考过程。当你准备好后，请输出继续的操作指令。"
+            ]),})
         # conv.append({"role": "user", "content": '\n'.join([
-        #         "以下是一些示例操作，您可以参考这些示例来生成您的操作指令：",
-        #         "1. 点击屏幕上的指定位置",
-        #         '// 当前为桌面，需要打开xx软件',
-        #         '{"POINT":'+str(get_random_coordinate())+'}',
-        #         "2. 向上滑动",
-        #         '// 当前界面未找到关键字，需要继续滑动',
-        #         '{"POINT":'+str(get_random_coordinate())+',"to":"up"}',
-        #         "3. 触发特殊按键",
-        #         '// 需要先退回到桌面',
-        #         '{"PRESS":"HOME"}',
-        #         "4. 向设备键入文本",
-        #         '/* 可以向聊天栏键入文本进行回复 */',
-        #         '{"TYPE":"你好"}',
-        #         "5. 结束任务",
-        #         '// 任务已完成',
-        #         '{"STATUS":"finish"}',
-        #         "6. 组合手势参数",
-        #         '// 需要长按以删除',
-        #         '{"POINT":'+str(get_random_coordinate())+',"duration":3000}',
-        #         "7. 等待响应",
-        #         '// 当前界面正在加载，请等待',
-        #         '{"duration":3000}',
-        #         "",
-        #         "你可以将思考过程写在注释中，以便我们了解你的思考过程。当你准备好后，请输出继续的操作指令。"
-        #     ]),})
-        # conv.append({"role": "assistant", "content": '/* 了解，我需要在注释中进行批判性思考后以JSON格式输出操作指令。目前只是测试我是否能遵循格式，我需要直接输出继续任务的指令*/\n{}'})
+        #     "你可以将思考过程写在注释中，以便我们了解你的思考过程。当你准备好后，请输出继续的操作指令。"
+        # ])})
+        conv.append({"role": "assistant", "content": '/* 了解，我需要在注释中进行批判性思考后以JSON格式输出操作指令。目前只是测试我是否能遵循格式，我需要直接输出继续任务的指令*/\n{}'})
         conv.append({"role": "user", "content": [
             f"<Question>{user_query}</Question>\n当前屏幕截图：",
             img, 
