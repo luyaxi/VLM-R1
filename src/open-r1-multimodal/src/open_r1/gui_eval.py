@@ -237,7 +237,7 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
     score_penalty = 0.0
     extra_keys = action_keys - solution_keys
     if extra_keys:
-        score_penalty += 0.3 * (len(extra_keys) / len(solution_keys))
+        score_penalty += 0.3 * (len(extra_keys) / len(action_keys))
         print("Extra keys in action: ", extra_keys)
     sub_scores = []
     
