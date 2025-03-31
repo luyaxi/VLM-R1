@@ -207,10 +207,10 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
     try:
         action = load_and_validate_action(res)
         if '```json' in res:
-            raise Exception("Invalid format")
+            return -0.95
         
         if not ("thought" in action or "think" in action or "//" in res or ("/*" in res and '*/' in res)):
-            raise Exception("No think.")
+            return -0.95
 
         action_keys = set(action.keys())
         solution_keys = set(solution.keys())

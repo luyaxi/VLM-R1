@@ -29,7 +29,7 @@ TOKENIZERS_PARALLELISM=false CUDA_DEVICE_MAX_CONNECTIONS=1 UCX_NET_DEVICES=bond0
     --learning_rate 1e-6 \
     --warmup_steps 10 \
     --weight_decay 0.1 \
-    --adam_beta2 0.99 \
+    --adam_beta2 0.95 \
     --global_var false \
     --lr_scheduler_type "constant" \
     --tune_vision true \
