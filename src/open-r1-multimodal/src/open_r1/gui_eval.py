@@ -206,11 +206,6 @@ def action_type_check(completions, solution: list[dict], **kwargs):
 def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
     try:
         action = load_and_validate_action(res)
-        if '```json' in res:
-            return -0.95
-        
-        if not ("thought" in action or "think" in action or "//" in res or ("/*" in res and '*/' in res)):
-            return -0.95
 
         action_keys = set(action.keys())
         solution_keys = set(solution.keys())
@@ -225,12 +220,15 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
             solution_keys.remove("thought")
         if len(action_keys) == 0 and solution.get("STATUS","") != "continue":
             return -1
+        
         if len(action_keys & solution_keys) != len(solution_keys.union(action_keys)):
         #     recall = len(action_keys & solution_keys) / len(solution_keys)
         #     # rescale to -0.95 to -0.8
             print("Type Missing: {} -> {}".format(str(action_keys),str(solution_keys)))
         #     return -0.95 + (recall * 0.15)
-            
+
+        if '```json' in res or not ("thought" in action or "think" in action or "//" in res or ("/*" in res and '*/' in res)):
+            return -0.95
     except jsonschema.ValidationError as e:
         return -0.95 
     except Exception as e:
