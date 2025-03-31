@@ -3,18 +3,18 @@
 source ~/miniconda3/bin/activate vcpm
 cd `dirname $0`
 
-# RUN_NAME="MiniCPM-26o-GRPO-1120px-8s-hardscore-schema"
+RUN_NAME="MiniCPM-26o-GRPO-1120px-4s-noKL"
 
 # RUN_NAME="MiniCPMV-HW-THOUGHT-7B-GRPO-1120px-8s-lr"
 # RUN_NAME="MiniCPMV-HW-E-THOUGHT-7B-GRPO-1120px-8s-lr"
-RUN_NAME="MiniCPMV-HW-7B-GRPO-1120px-4s-noKL"
+# RUN_NAME="MiniCPMV-HW-7B-GRPO-1120px-4s-noKL"
 
 set -ex
 TOKENIZERS_PARALLELISM=false CUDA_DEVICE_MAX_CONNECTIONS=1 UCX_NET_DEVICES=bond0 GLOO_SOCKET_IFNAME=bond0 NCCL_SOCKET_IFNAME=bond0 NCCL_IB_HCA="mlx5_2,mlx5_3,mlx5_5,mlx5_6" WANDB_PROJECT=CPM-RFT accelerate launch \
     --config_file debug.yml \
     src/open_r1/grpo_rec.py \
     --output_dir output/$RUN_NAME \
-    --model_name_or_path /share_data/data1/models/MiniCPM-V-HW-7B-hg \
+    --model_name_or_path /share_data/data1/models/MiniCPM-o-2_6-hg \
     --dataset_name /share_data/data1/GUIData/filtered_aitw_mb_ac.jsonl \
     --max_prompt_length 2048 \
     --max_completion_length 160 \

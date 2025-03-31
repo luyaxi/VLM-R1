@@ -227,7 +227,7 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
             print("Type Missing: {} -> {}".format(str(action_keys),str(solution_keys)))
         #     return -0.95 + (recall * 0.15)
 
-        if '```json' in res or not ("thought" in action or "think" in action or "//" in res or ("/*" in res and '*/' in res)):
+        if '```json' in res or not ("thought" in action or "think" in action or res.startswith("//")  or (res.startswith("/*") and '*/' in res)):
             return -0.95
     except jsonschema.ValidationError as e:
         return -0.95 
@@ -580,7 +580,7 @@ class GUIRFTDataset(Dataset):
                 '// 当前界面正在加载，请等待',
                 '{"duration":3000}',
                 "",
-                "你可以将思考过程写在注释中，以便我们了解你的思考过程。当你准备好后，请输出继续的操作指令。"
+                "你需要将思考过程写在注释中，以便我们了解你的思考过程。当你准备好后，请输出继续的操作指令。"
             ]),})
         # conv.append({"role": "user", "content": '\n'.join([
         #     "你可以将思考过程写在注释中，以便我们了解你的思考过程。当你准备好后，请输出继续的操作指令。"
