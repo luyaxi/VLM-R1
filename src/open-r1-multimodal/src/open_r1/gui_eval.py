@@ -227,6 +227,7 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
         if len(action_keys & solution_keys) != len(solution_keys.union(action_keys)):
             recall = len(action_keys & solution_keys) / len(solution_keys)
             # rescale to -0.95 to -0.8
+            print("Type Missing: {} -> {}".format(str(action_keys),str(solution_keys)))
             return -0.95 + (recall * 0.15)
             
     except jsonschema.ValidationError as e:
@@ -337,13 +338,14 @@ def calculate_dist_score(pred_loc: list[list[int,int]], gt_loc: list[int,int], r
     abs_y = int(y_ratio * origin_h)
     gt_abs_x = int(gt_x_ratio * origin_w)
     gt_abs_y = int(gt_y_ratio * origin_h)
+    tolerance = 0.05
     
     if bbox is None or not isinstance(bbox, list):
         # print("No bbox provided.")
         # let assume the bbox is 1%x1% windows
         if ((gt_x_ratio - 1e-2) <= x_ratio <= (gt_x_ratio + 1e-2)) and ((gt_y_ratio - 1e-2) <= y_ratio <= (gt_y_ratio + 1e-2)):
             dist_score =  1.0
-        elif ((gt_x_ratio - 1e-1) <= x_ratio <= (gt_x_ratio + 1e-1)) and ((gt_y_ratio - 1e-1) <= y_ratio <= (gt_y_ratio + 1e-1)):
+        elif ((gt_x_ratio - tolerance) <= x_ratio <= (gt_x_ratio + tolerance)) and ((gt_y_ratio - tolerance) <= y_ratio <= (gt_y_ratio + tolerance)):
             dist_score =  0.3
         else:
             # dist_score = -1
@@ -358,7 +360,7 @@ def calculate_dist_score(pred_loc: list[list[int,int]], gt_loc: list[int,int], r
             # remain 0.1 for centering
             max_delta = max(abs(abs_x - (left_top[0] + right_bottom[0]) / 2), abs(abs_y - (left_top[1] + right_bottom[1]) / 2))
             dist_score += 0.1 * ((1 - max_delta / 1000)**3)
-        elif ((left_top[0] - 0.1*origin_w) <= abs_x <= (right_bottom[0] + 0.1*origin_w )) and ((left_top[1] -0.1*origin_h) <= abs_y <= right_bottom[1] + 0.1*origin_h):
+        elif ((left_top[0] - tolerance*origin_w) <= abs_x <= (right_bottom[0] + tolerance*origin_w )) and ((left_top[1] - tolerance*origin_h) <= abs_y <= right_bottom[1] + tolerance*origin_h):
             dist_score = 0.3
         else:
             # print(f"Point {(x_ratio,y_ratio)} {[abs_x,abs_y]} out of Bbox {[left_top, right_bottom]}, GT: {(gt_x_ratio,gt_y_ratio)} {[gt_abs_x,gt_abs_y]}")
