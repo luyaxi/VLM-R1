@@ -222,10 +222,10 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
             return -1
         
         if len(action_keys & solution_keys) != len(solution_keys.union(action_keys)):
-        #     recall = len(action_keys & solution_keys) / len(solution_keys)
-        #     # rescale to -0.95 to -0.8
+            # rescale to -0.95 to -0.8
             print("Type Missing: {} -> {}".format(str(action_keys),str(solution_keys)))
-        #     return -0.95 + (recall * 0.15)
+            if len(action_keys & solution_keys) <= len(solution_keys):
+                return -1
 
         if not ("thought" in action or "think" in action or res.startswith("//")  or (res.startswith("/*") and '*/' in res)):
             return -1
