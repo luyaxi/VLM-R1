@@ -523,10 +523,10 @@ class GUIRFTDataset(Dataset):
             print("Error while processing conversation.")
             return self[random.randint(0,len(self.data)-1)]
         
-        if list(action.keys()) == ["POINT"]:
-            # We should skip this case randomly
-            if random.random() < 0.5:
-                return self[random.randint(0,len(self.data)-1)]
+        # if list(action.keys()) == ["POINT"]:
+        #     # We should skip this case randomly
+        #     if random.random() < 0.7:
+        #         return self[random.randint(0,len(self.data)-1)]
         
         for img_id,img_file in item["image"].items():
             try:
