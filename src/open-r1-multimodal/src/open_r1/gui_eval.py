@@ -583,12 +583,12 @@ class GUIRFTDataset(Dataset):
                 '// 当前界面正在加载，请等待',
                 '{"duration":3000}',
                 "",
-                "你必须将思考过程写在注释中，以便我们了解你的思考过程。当你准备好后，请输出继续的操作指令。"
+                "你必须将思考过程写在注释中，以便我们了解你的思考过程。请记住，仔细分析当前界面，思考应该执行什么动作。"
             ]),})
         # conv.append({"role": "user", "content": '\n'.join([
         #     "你可以将思考过程写在注释中，以便我们了解你的思考过程。当你准备好后，请输出继续的操作指令。"
         # ])})
-        conv.append({"role": "assistant", "content": '// 了解，我需要在注释中进行批判性思考后以JSON格式输出操作指令。目前只是测试我是否能遵循格式，我需要直接输出继续任务的指令\n{}'})
+        conv.append({"role": "assistant", "content": '// 了解，我需要在注释中思考应该执行何种动作后以JSON格式输出。目前只是测试我是否能遵循格式，我需要输出继续执行的动作\n{"STATUS":"continue"}'})
         conv.append({"role": "user", "content": [
             f"<Question>{user_query}</Question>\n当前屏幕截图：",
             img, 
