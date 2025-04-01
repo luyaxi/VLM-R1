@@ -230,7 +230,7 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
         if not ("thought" in action or "think" in action or res.startswith("//")  or (res.startswith("/*") and '*/' in res)):
             return -1
     except Exception as e:
-        return -2
+        return -1
 
     score_penalty = 0.0
     extra_keys = action_keys - solution_keys
