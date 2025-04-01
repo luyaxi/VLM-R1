@@ -229,10 +229,8 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
 
         if not ("thought" in action or "think" in action or res.startswith("//")  or (res.startswith("/*") and '*/' in res)):
             return -1
-    except jsonschema.ValidationError as e:
-        return -1
     except Exception as e:
-        return -1
+        return -2
 
     score_penalty = 0.0
     extra_keys = action_keys - solution_keys
@@ -259,7 +257,7 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
                 if action[k] > 150 or action[k] <= 5000:
                     sub_score += 1.0
                 else:
-                    sub_score -= 1.0
+                    sub_score -= 0
                     print("Invalid duration: ", action[k])
             
             case "TYPE":
@@ -273,19 +271,19 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
                     if isinstance(action[k],list):
                         sub_score += calculate_dist_score(action[k], solution[k], reso, bbox[1])
                     else:
-                        sub_score -= 1.0
+                        sub_score -= 0
                         print(f"Invalid to for direction {solution[k]}: ", action[k])
                     
                 else:
                     # text direction
                     if isinstance(action[k],list):
-                        sub_score -= 1.0
+                        sub_score -= 0
                         print(f"Invalid to for direction {solution[k]}: ", action[k])
                     else:
                         if action[k] == solution[k]:
                             sub_score += 1.0
                         else:
-                            sub_score -= 1.0
+                            sub_score -= 0
                             print("Invalid to: ", action[k])
             
             case _:
@@ -293,13 +291,13 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
                     if action[k] is None:
                         sub_score += 1.0
                     else:
-                        sub_score -= 1.0
+                        sub_score -= 0
                         # print("Required ", solution[k], ", got: ", action[k])
                 else:
                     if action[k] == solution[k]:
                         sub_score += 1.0
                     else:
-                        sub_score -= 1.0
+                        sub_score -= 0
                         # print("Required ", solution[k], ", got: ", action[k])
                         
         sub_scores.append(sub_score)
