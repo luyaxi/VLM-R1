@@ -19,11 +19,11 @@ SCHEMA = {
     # "required": ["think"],
     # "required": ["thought"],
     "properties": {
-        # "think": {
+        "think": {
         # "thought":{
-        #     "type": "string",
+            "type": "string",
         #     "description": "对当前任务的思考，用于描述当前操作的目的"
-        # },
+        },
         "POINT": {
             "description": "点击屏幕上的指定位置",
             "$ref": "#/$defs/Location"
@@ -165,7 +165,7 @@ def action_schema_check(completions, **kwargs):
 def _action_type_check(res:str, solution: dict):
     try:
         action = load_and_validate_action(res)
-        if not ("think" in action or res.startswith("//") or res.startswith("/*")):
+        if not ("thought" in action or "think" in action or res.startswith("//") or res.startswith("/*")):
             raise Exception("No think.")
         action_keys = set(action.keys())
         solution_keys = set(solution.keys())
@@ -173,7 +173,10 @@ def _action_type_check(res:str, solution: dict):
             action_keys.remove("think")
         if "think" in solution_keys:
             solution_keys.remove("think")
-        
+        if "thought" in action_keys:
+            action_keys.remove("thought")
+        if "thought" in solution_keys:
+            solution_keys.remove("thought")
         # jaccard_index = len(action_keys & solution_keys) / len(solution_keys.union(action_keys))
         # if jaccard_index < 1:
             # print("Mismatched keys in action, Expected: ", solution_keys, " Got: ", action_keys)
@@ -206,47 +209,38 @@ def action_type_check(completions, solution: list[dict], **kwargs):
 def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
     try:
         action = load_and_validate_action(res)
-
+        if not ("thought" in action or "think" in action or res.startswith("//") or res.startswith("/*")):
+            raise Exception("No think.")
         action_keys = set(action.keys())
         solution_keys = set(solution.keys())
         if "think" in action_keys:
             action_keys.remove("think")
         if "think" in solution_keys:
             solution_keys.remove("think")
-            
         if "thought" in action_keys:
             action_keys.remove("thought")
         if "thought" in solution_keys:
             solution_keys.remove("thought")
-        if len(action_keys) == 0 and solution.get("STATUS","") != "continue":
-            return -1
         
-        if len(action_keys & solution_keys) != len(solution_keys.union(action_keys)):
-            # rescale to -0.95 to -0.8
-            print("Type Missing: {} -> {}".format(str(action_keys),str(solution_keys)))
-            if len(action_keys & solution_keys) <= len(solution_keys):
-                return -1
-
-        if not ("thought" in action or "think" in action or res.startswith("//")  or (res.startswith("/*") and '*/' in res)):
-            return -1
+        score = len(action_keys & solution_keys)  == len(solution_keys.union(action_keys))
+        if "```json" in res:
+            score =  score * 0.9
+                    
     except Exception as e:
         return -1
 
-    score_penalty = 0.0
-    extra_keys = action_keys - solution_keys
-    if extra_keys:
-        score_penalty += 0.3 * (len(extra_keys) / len(action_keys))
-        print("Extra keys in action: ", extra_keys)
-        
-    if '```json' in res:
-        score_penalty += 0.1
+    # score == 0 / 1.0 / 0.9
+    if score < 0.89:
+        print("Mismatched keys in action, Expected: ", solution_keys, " Got: ", action_keys)
+        # print("Invalid action: ", res)
+        return score
+
     sub_scores = []
-    
     for k in solution.keys():
         if k in ["think","thought"]:
             continue
         if k not in action:
-            sub_scores.append(-1)
+            sub_scores.append(0)
             continue
         sub_score = 0
         match k:
@@ -254,7 +248,7 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
                 sub_score += calculate_dist_score(action[k], solution[k], reso, bbox[0])
             
             case "duration":
-                if action[k] > 150 or action[k] <= 5000:
+                if action[k] > 150 and action[k] <= 5000:
                     sub_score += 1.0
                 else:
                     sub_score -= 0
@@ -303,9 +297,9 @@ def _action_args_check(res:str, solution: dict, reso: tuple, bbox: list[list]):
         sub_scores.append(sub_score)
     if not sub_scores:
         print("No args to check.")
-        return 0.0
+        return score
     else:
-        return max(sum(sub_scores) / len(sub_scores) - score_penalty,-0.9)
+        return score + sum(sub_scores)
     
 
 def action_args_check(completions, solution: list[dict], resolution, bboxs,**kwargs):
@@ -349,11 +343,11 @@ def calculate_dist_score(pred_loc: list[list[int,int]], gt_loc: list[int,int], r
         # let assume the bbox is 1%x1% windows
         if ((gt_x_ratio - 1e-2) <= x_ratio <= (gt_x_ratio + 1e-2)) and ((gt_y_ratio - 1e-2) <= y_ratio <= (gt_y_ratio + 1e-2)):
             dist_score =  1.0
-        elif ((gt_x_ratio - tolerance) <= x_ratio <= (gt_x_ratio + tolerance)) and ((gt_y_ratio - tolerance) <= y_ratio <= (gt_y_ratio + tolerance)):
-            dist_score =  0.3
+        # elif ((gt_x_ratio - tolerance) <= x_ratio <= (gt_x_ratio + tolerance)) and ((gt_y_ratio - tolerance) <= y_ratio <= (gt_y_ratio + tolerance)):
+        #     dist_score =  0.3
         else:
             # dist_score = -1
-            dist_score = - calculate_manhattan_distance(x_ratio, y_ratio, gt_x_ratio, gt_y_ratio) / 2
+            dist_score = 1 - calculate_manhattan_distance(x_ratio, y_ratio, gt_x_ratio, gt_y_ratio) / 2
     
     else:
         left_top = bbox[0]
@@ -364,12 +358,12 @@ def calculate_dist_score(pred_loc: list[list[int,int]], gt_loc: list[int,int], r
             # remain 0.1 for centering
             max_delta = max(abs(abs_x - (left_top[0] + right_bottom[0]) / 2), abs(abs_y - (left_top[1] + right_bottom[1]) / 2))
             dist_score += 0.1 * ((1 - max_delta / 1000)**3)
-        elif ((left_top[0] - tolerance*origin_w) <= abs_x <= (right_bottom[0] + tolerance*origin_w )) and ((left_top[1] - tolerance*origin_h) <= abs_y <= right_bottom[1] + tolerance*origin_h):
-            dist_score = 0.3
+        # elif ((left_top[0] - tolerance*origin_w) <= abs_x <= (right_bottom[0] + tolerance*origin_w )) and ((left_top[1] - tolerance*origin_h) <= abs_y <= right_bottom[1] + tolerance*origin_h):
+        #     dist_score = 0.3
         else:
             # print(f"Point {(x_ratio,y_ratio)} {[abs_x,abs_y]} out of Bbox {[left_top, right_bottom]}, GT: {(gt_x_ratio,gt_y_ratio)} {[gt_abs_x,gt_abs_y]}")
             # dist_score = -1
-            dist_score = - calculate_manhattan_distance(x_ratio, y_ratio, gt_x_ratio, gt_y_ratio) / 2
+            dist_score = 1 - calculate_manhattan_distance(x_ratio, y_ratio, gt_x_ratio, gt_y_ratio) / 2
     
     return dist_score
     
@@ -560,36 +554,30 @@ class GUIRFTDataset(Dataset):
         conv.append({"role": "user", "content": '\n'.join([
                 "以下是一些示例操作，您可以参考这些示例来生成您的操作指令：",
                 "1. 点击屏幕上的指定位置",
-                '// 当前为桌面，需要打开xx软件',
                 '{"POINT":'+str(get_random_coordinate())+'}',
                 "2. 向上滑动",
-                '// 当前界面未找到关键字，需要继续滑动',
                 '{"POINT":'+str(get_random_coordinate())+',"to":"up"}',
                 "3. 触发特殊按键",
-                '// 需要先退回到桌面',
                 '{"PRESS":"HOME"}',
                 "4. 向设备键入文本",
-                '/* 可以向聊天栏键入文本进行回复 */',
                 '{"TYPE":"你好"}',
                 "5. 结束任务",
-                '// 任务已完成',
                 '{"STATUS":"finish"}',
                 "6. 组合手势参数",
-                '// 需要长按以删除',
                 '{"POINT":'+str(get_random_coordinate())+',"duration":3000}',
                 "7. 等待响应",
-                '// 当前界面正在加载，请等待',
                 '{"duration":3000}',
                 "",
-                "你必须将思考过程写在注释中，以便我们了解你的思考过程。请记住，仔细分析当前界面，思考应该执行什么动作。"
+                "你可以将思考过程写在注释中，以便我们了解你的思考过程。请记住，仔细分析当前界面，思考应该执行什么动作。"
             ]),})
         # conv.append({"role": "user", "content": '\n'.join([
         #     "你可以将思考过程写在注释中，以便我们了解你的思考过程。当你准备好后，请输出继续的操作指令。"
         # ])})
         conv.append({"role": "assistant", "content": '// 了解，我需要在注释中思考应该执行何种动作后以JSON格式输出。目前只是测试我是否能遵循格式，我需要输出继续执行的动作\n{"STATUS":"continue"}'})
         conv.append({"role": "user", "content": [
-            f"<Question>{user_query}</Question>\n当前屏幕截图：",
+            # f"<Question>{user_query}</Question>\n当前屏幕截图：",
             img, 
+            f"图像分辨率: {str(img.size)}\n问题：{user_query}"
         ]})
         
         return {
